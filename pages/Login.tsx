@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { auth, db_fs } from "../services/firebase";
 import { db } from "../services/db";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+// Use ESM URLs for firebase/auth to fix export member errors
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from "https://esm.sh/firebase@11.3.1/auth";
+import { doc, getDoc, setDoc } from "https://esm.sh/firebase@11.3.1/firestore";
 import { Button, Input, Card } from "../components/UI";
 import { UserProfile, UserRole } from "../types";
 

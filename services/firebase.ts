@@ -1,23 +1,22 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeApp } from "https://esm.sh/firebase@11.3.1/app";
+import { getAuth } from "https://esm.sh/firebase@11.3.1/auth";
+import { getFirestore, enableIndexedDbPersistence } from "https://esm.sh/firebase@11.3.1/firestore";
 
-// Konfigurasi resmi dari proyek 'warung-pos' milik Anda
+// Konfigurasi resmi untuk proyek baru 'warungposfix'
 const firebaseConfig = {
-  apiKey: "AIzaSyAR5fQXEhFVdCwXjCVSzZzMDWwqqpvdCwE",
-  authDomain: "warung-pos.firebaseapp.com",
-  projectId: "warung-pos",
-  storageBucket: "warung-pos.firebasestorage.app",
-  messagingSenderId: "241812132692",
-  appId: "1:241812132692:web:6788fdf4c25eb1d297eec1",
+  apiKey: "AIzaSyA5zXJdiWQWvLVcC6Ifqba1SDok7lhPg7Q",
+  authDomain: "warungposfix.firebaseapp.com",
+  projectId: "warungposfix",
+  storageBucket: "warungposfix.firebasestorage.app",
+  messagingSenderId: "9222944078",
+  appId: "1:9222944078:web:653d2577d0c91796e91a1f",
 };
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db_fs = getFirestore(app);
 
-// Aktifkan Offline Persistence
-// Ini sangat penting untuk Warung agar aplikasi tetap bisa transaksi meski sinyal lemah
+// Aktifkan Offline Persistence agar tetap bisa transaksi tanpa internet
 enableIndexedDbPersistence(db_fs).catch((err) => {
   if (err.code === "failed-precondition") {
     console.warn("Persistence failed: Multiple tabs open");

@@ -13,7 +13,8 @@ import Login from "./pages/Login";
 import { PinGuard } from "./components/Security";
 import { db } from "./services/db";
 import { auth } from "./services/firebase";
-import { onAuthStateChanged, signOut, User } from "firebase/auth";
+// Use ESM URL for firebase/auth to fix export member errors
+import { onAuthStateChanged, signOut, type User } from "https://esm.sh/firebase@11.3.1/auth";
 import { OfflineIndicator, Badge } from "./components/UI";
 import { UserProfile } from "./types";
 
