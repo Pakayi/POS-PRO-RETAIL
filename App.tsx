@@ -8,20 +8,19 @@ import Settings from "./pages/Settings";
 import Reports from "./pages/Reports";
 import Suppliers from "./pages/Suppliers";
 import Procurement from "./pages/Procurement";
-import DebtBook from "./pages/DebtBook"; // Baru
+import DebtBook from "./pages/DebtBook";
 import Login from "./pages/Login";
 import { PinGuard } from "./components/Security";
 import { db } from "./services/db";
 import { auth } from "./services/firebase";
-// Use ESM URL for firebase/auth to fix export member errors
-import { onAuthStateChanged, signOut, type User } from "https://esm.sh/firebase@11.3.1/auth";
+import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { OfflineIndicator, Badge } from "./components/UI";
 import { UserProfile } from "./types";
 
 const NAV_ITEMS = [
   { path: "/", label: "Dashboard", icon: "fa-gauge-high", roles: ["owner", "staff"] },
   { path: "/pos", label: "Kasir (POS)", icon: "fa-cash-register", roles: ["owner", "staff"] },
-  { path: "/debt-book", label: "Buku Hutang", icon: "fa-book", roles: ["owner", "staff"] }, // Baru
+  { path: "/debt-book", label: "Buku Hutang", icon: "fa-book", roles: ["owner", "staff"] },
   { path: "/procurement", label: "Stok Masuk", icon: "fa-truck-loading", roles: ["owner"] },
   { path: "/products", label: "Produk", icon: "fa-box", roles: ["owner"] },
   { path: "/suppliers", label: "Supplier", icon: "fa-building-user", roles: ["owner"] },

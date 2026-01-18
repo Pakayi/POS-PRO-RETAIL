@@ -1,7 +1,6 @@
 import { Product, Transaction, AppSettings, Customer, UserProfile, Supplier, Procurement, DebtPayment } from "../types";
 import { db_fs, auth } from "./firebase";
-// Use ESM URLs for firebase/firestore to ensure version consistency
-import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, writeBatch, getDocs } from "https://esm.sh/firebase@11.3.1/firestore";
+import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, writeBatch, getDocs } from "firebase/firestore";
 
 const STORAGE_KEYS = {
   PRODUCTS: "warung_products",

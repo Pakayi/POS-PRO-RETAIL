@@ -1,8 +1,8 @@
-import { initializeApp } from "https://esm.sh/firebase@11.3.1/app";
-import { getAuth } from "https://esm.sh/firebase@11.3.1/auth";
-import { getFirestore, enableIndexedDbPersistence } from "https://esm.sh/firebase@11.3.1/firestore";
+import { initializeApp } from "firebase/app";
+import { getAuth } from "firebase/auth";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
-// Konfigurasi resmi untuk proyek baru 'warungposfix'
+// Konfigurasi resmi proyek warungposfix
 const firebaseConfig = {
   apiKey: "AIzaSyA5zXJdiWQWvLVcC6Ifqba1SDok7lhPg7Q",
   authDomain: "warungposfix.firebaseapp.com",
@@ -16,7 +16,7 @@ const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db_fs = getFirestore(app);
 
-// Aktifkan Offline Persistence agar tetap bisa transaksi tanpa internet
+// Aktifkan Offline Persistence
 enableIndexedDbPersistence(db_fs).catch((err) => {
   if (err.code === "failed-precondition") {
     console.warn("Persistence failed: Multiple tabs open");
