@@ -53,8 +53,30 @@ export interface Customer {
   phone: string;
   tier: CustomerTier;
   totalSpent: number;
-  debtBalance: number; // Saldo hutang saat ini
+  debtBalance: number;
   joinedAt: number;
+  // Member Point Fields
+  isMember: boolean;
+  pointsBalance: number;
+  memberId?: string;
+}
+
+export interface PointReward {
+  id: string;
+  name: string;
+  pointsNeeded: number;
+  stock: number;
+  description: string;
+}
+
+export interface PointHistory {
+  id: string;
+  customerId: string;
+  customerName: string;
+  type: "earn" | "redeem";
+  points: number;
+  timestamp: number;
+  referenceId: string; // Transaction ID atau Reward ID
 }
 
 export interface DebtPayment {
@@ -81,13 +103,14 @@ export interface Transaction {
   timestamp: number;
   items: CartItem[];
   totalAmount: number;
-  paymentMethod: "cash" | "qris" | "debt"; // Tambah metode debt
+  paymentMethod: "cash" | "qris" | "debt";
   cashPaid: number;
   change: number;
   note?: string;
   customerId?: string;
   customerName?: string;
   discountAmount?: number;
+  pointsEarned?: number; // Poin yang didapat dari transaksi ini
 }
 
 export type UserRole = "owner" | "staff";
@@ -116,16 +139,12 @@ export interface AppSettings {
     silver: number;
     gold: number;
   };
-}
-
-export enum AppRoute {
-  DASHBOARD = "dashboard",
-  POS = "pos",
-  PRODUCTS = "products",
-  CUSTOMERS = "customers",
-  REPORTS = "reports",
-  SETTINGS = "settings",
-  SUPPLIERS = "suppliers",
-  PROCUREMENT = "procurement",
-  DEBT_BOOK = "debt-book",
+  // Loyalty Settings
+  enablePoints: boolean;
+  pointValue: number; // Misal: 1000 (Tiap 1000 rupiah dapat 1 poin)
+  tierMultipliers: {
+    bronze: number;
+    silver: number;
+    gold: number;
+  };
 }

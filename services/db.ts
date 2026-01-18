@@ -1,6 +1,7 @@
-import { Product, Transaction, AppSettings, Customer, UserProfile, Supplier, Procurement, DebtPayment } from "../types";
+import { Product, Transaction, AppSettings, Customer, UserProfile, Supplier, Procurement, DebtPayment, PointReward, PointHistory } from "../types";
 import { db_fs, auth } from "./firebase";
-import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, writeBatch, getDocs } from "firebase/firestore";
+// FIX: Using CDN URLs for Firestore to match other services
+import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const STORAGE_KEYS = {
   PRODUCTS: "warung_products",
@@ -11,6 +12,8 @@ const STORAGE_KEYS = {
   SUPPLIERS: "warung_suppliers",
   PROCUREMENT: "warung_procurement",
   DEBT_PAYMENTS: "warung_debt_payments",
+  REWARDS: "warung_point_rewards",
+  POINT_HISTORY: "warung_point_history",
   INIT: "warung_initialized",
 };
 
@@ -26,6 +29,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   securityPin: null,
   printerName: null,
   tierDiscounts: { bronze: 0, silver: 2, gold: 5 },
+  enablePoints: true,
+  pointValue: 1000,
+  tierMultipliers: { bronze: 1, silver: 1.2, gold: 1.5 },
 };
 
 class DBService {
@@ -54,7 +60,8 @@ class DBService {
   }
 
   private setupCloudSync() {
-    auth.onAuthStateChanged(async (user) => {
+    // FIX: Typed user as any to accommodate CDN import type mismatches
+    auth.onAuthStateChanged(async (user: any) => {
       if (user) {
         const profileDoc = await getDoc(doc(db_fs, "users", user.uid));
         if (profileDoc.exists()) {
@@ -86,11 +93,18 @@ class DBService {
             window.dispatchEvent(new Event("customers-updated"));
           });
 
-          onSnapshot(collection(db_fs, `warungs/${warungId}/debt_payments`), (snapshot) => {
-            const payments: DebtPayment[] = [];
-            snapshot.forEach((doc) => payments.push(doc.data() as DebtPayment));
-            localStorage.setItem(STORAGE_KEYS.DEBT_PAYMENTS, JSON.stringify(payments));
-            window.dispatchEvent(new Event("debt-payments-updated"));
+          onSnapshot(collection(db_fs, `warungs/${warungId}/point_rewards`), (snapshot) => {
+            const rewards: PointReward[] = [];
+            snapshot.forEach((doc) => rewards.push(doc.data() as PointReward));
+            localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(rewards));
+            window.dispatchEvent(new Event("rewards-updated"));
+          });
+
+          onSnapshot(collection(db_fs, `warungs/${warungId}/point_history`), (snapshot) => {
+            const history: PointHistory[] = [];
+            snapshot.forEach((doc) => history.push(doc.data() as PointHistory));
+            localStorage.setItem(STORAGE_KEYS.POINT_HISTORY, JSON.stringify(history));
+            window.dispatchEvent(new Event("point-history-updated"));
           });
 
           onSnapshot(collection(db_fs, `warungs/${warungId}/transactions`), (snapshot) => {
@@ -99,174 +113,33 @@ class DBService {
             localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs));
             window.dispatchEvent(new Event("transactions-updated"));
           });
+
+          // Cloud sync for suppliers
+          onSnapshot(collection(db_fs, `warungs/${warungId}/suppliers`), (snapshot) => {
+            const suppliers: Supplier[] = [];
+            snapshot.forEach((doc) => suppliers.push(doc.data() as Supplier));
+            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
+            window.dispatchEvent(new Event("suppliers-updated"));
+          });
+
+          // Cloud sync for procurement
+          onSnapshot(collection(db_fs, `warungs/${warungId}/procurements`), (snapshot) => {
+            const procurements: Procurement[] = [];
+            snapshot.forEach((doc) => procurements.push(doc.data() as Procurement));
+            localStorage.setItem(STORAGE_KEYS.PROCUREMENT, JSON.stringify(procurements));
+            window.dispatchEvent(new Event("procurements-updated"));
+          });
+
+          // Cloud sync for debt payments
+          onSnapshot(collection(db_fs, `warungs/${warungId}/debt_payments`), (snapshot) => {
+            const payments: DebtPayment[] = [];
+            snapshot.forEach((doc) => payments.push(doc.data() as DebtPayment));
+            localStorage.setItem(STORAGE_KEYS.DEBT_PAYMENTS, JSON.stringify(payments));
+            window.dispatchEvent(new Event("debt-payments-updated"));
+          });
         }
       }
     });
-  }
-
-  async wipeAllData(): Promise<void> {
-    if (!this.profile?.warungId) return;
-    const wid = this.profile.warungId;
-
-    const keysToClear = [STORAGE_KEYS.PRODUCTS, STORAGE_KEYS.TRANSACTIONS, STORAGE_KEYS.CUSTOMERS, STORAGE_KEYS.SUPPLIERS, STORAGE_KEYS.PROCUREMENT, STORAGE_KEYS.DEBT_PAYMENTS];
-    keysToClear.forEach((key) => localStorage.removeItem(key));
-
-    const collectionNames = ["products", "transactions", "customers", "suppliers", "procurements", "debt_payments"];
-
-    try {
-      for (const colName of collectionNames) {
-        const colRef = collection(db_fs, `warungs/${wid}/${colName}`);
-        const snapshot = await getDocs(colRef);
-        if (snapshot.empty) continue;
-
-        const batch = writeBatch(db_fs);
-        snapshot.forEach((d) => batch.delete(d.ref));
-        await batch.commit();
-      }
-    } catch (error) {
-      console.error("Gagal membersihkan data cloud:", error);
-      throw error;
-    }
-
-    this.notifyAll();
-  }
-
-  async injectDemoData(): Promise<void> {
-    if (!this.profile?.warungId) return;
-    const wid = this.profile.warungId;
-    const now = Date.now();
-
-    await this.wipeAllData();
-
-    const batch = writeBatch(db_fs);
-
-    // 1. Mock Suppliers
-    const suppliers: Supplier[] = [
-      { id: "S-DEMO-1", name: "PT Sembako Makmur", contact: "081122334455", address: "Pasar Induk Kramat Jati", description: "Supplier utama beras" },
-      { id: "S-DEMO-2", name: "Grosir Aneka Mie", contact: "085566778899", address: "Kawasan Industri Jababeka", description: "Distributor mi instan" },
-    ];
-
-    // 2. Mock Products
-    const products: Product[] = [
-      {
-        id: "P-DEMO-1",
-        name: "Indomie Goreng Original",
-        sku: "071295057937",
-        category: "Mie Instan",
-        baseUnit: "Bks",
-        stock: 120,
-        minStockAlert: 20,
-        updatedAt: now,
-        supplierId: "S-DEMO-2",
-        units: [
-          { name: "Bks", conversion: 1, price: 3500, buyPrice: 2800 },
-          { name: "Dus", conversion: 40, price: 130000, buyPrice: 110000 },
-        ],
-      },
-      {
-        id: "P-DEMO-2",
-        name: "Beras Rojo Lele 1L",
-        sku: "BRS-001",
-        category: "Sembako",
-        baseUnit: "Liter",
-        stock: 50,
-        minStockAlert: 10,
-        updatedAt: now,
-        supplierId: "S-DEMO-1",
-        units: [
-          { name: "Liter", conversion: 1, price: 12500, buyPrice: 10500 },
-          { name: "Karung", conversion: 25, price: 295000, buyPrice: 260000 },
-        ],
-      },
-      {
-        id: "P-DEMO-3",
-        name: "Le Minerale 600ml",
-        sku: "LM-600",
-        category: "Minuman",
-        baseUnit: "Botol",
-        stock: 48,
-        minStockAlert: 12,
-        updatedAt: now,
-        units: [
-          { name: "Botol", conversion: 1, price: 4000, buyPrice: 3000 },
-          { name: "Karton", conversion: 24, price: 85000, buyPrice: 70000 },
-        ],
-      },
-    ];
-
-    // 3. Mock Customers (Beberapa punya hutang)
-    const customers: Customer[] = [
-      { id: "C-DEMO-1", name: "Ibu Budi (Tetangga)", phone: "081234567890", tier: "Gold", totalSpent: 1500000, debtBalance: 75000, joinedAt: now - 86400000 * 30 },
-      { id: "C-DEMO-2", name: "Pak RT", phone: "089988776655", tier: "Silver", totalSpent: 500000, debtBalance: 0, joinedAt: now - 86400000 * 15 },
-    ];
-
-    // 4. Mock Transactions (Simulasi 3 hari terakhir)
-    const mockTxs: Transaction[] = [
-      {
-        id: "TX-DEMO-1",
-        timestamp: now - 86400000 * 2,
-        totalAmount: 45000,
-        paymentMethod: "cash",
-        cashPaid: 50000,
-        change: 5000,
-        items: [{ productId: "P-DEMO-1", productName: "Indomie Goreng Original", unitName: "Bks", price: 3500, buyPrice: 2800, quantity: 10, conversion: 1 }],
-      },
-      {
-        id: "TX-DEMO-2",
-        timestamp: now - 86400000 * 1,
-        totalAmount: 125000,
-        paymentMethod: "qris",
-        cashPaid: 125000,
-        change: 0,
-        items: [{ productId: "P-DEMO-2", productName: "Beras Rojo Lele 1L", unitName: "Liter", price: 12500, buyPrice: 10500, quantity: 10, conversion: 1 }],
-      },
-      {
-        id: "TX-DEMO-3",
-        timestamp: now,
-        totalAmount: 75000,
-        paymentMethod: "debt",
-        cashPaid: 0,
-        change: 0,
-        customerId: "C-DEMO-1",
-        customerName: "Ibu Budi (Tetangga)",
-        items: [{ productId: "P-DEMO-3", productName: "Le Minerale 600ml", unitName: "Botol", price: 4000, buyPrice: 3000, quantity: 15, conversion: 1 }],
-      },
-      {
-        id: "TX-DEMO-4",
-        timestamp: now - 3600000,
-        totalAmount: 15000,
-        paymentMethod: "cash",
-        cashPaid: 20000,
-        change: 5000,
-        items: [{ productId: "P-DEMO-1", productName: "Indomie Goreng Original", unitName: "Bks", price: 3500, buyPrice: 2800, quantity: 4, conversion: 1 }],
-      },
-    ];
-
-    // Push ke Batch
-    suppliers.forEach((s) => batch.set(doc(db_fs, `warungs/${wid}/suppliers`, s.id), this.sanitizeForFirestore(s)));
-    products.forEach((p) => batch.set(doc(db_fs, `warungs/${wid}/products`, p.id), this.sanitizeForFirestore(p)));
-    customers.forEach((c) => batch.set(doc(db_fs, `warungs/${wid}/customers`, c.id), this.sanitizeForFirestore(c)));
-    mockTxs.forEach((t) => batch.set(doc(db_fs, `warungs/${wid}/transactions`, t.id), this.sanitizeForFirestore(t)));
-
-    try {
-      await batch.commit();
-
-      // Update LocalStorage
-      localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
-      localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-      localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
-      localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(mockTxs));
-
-      this.notifyAll();
-    } catch (error) {
-      console.error("Gagal injeksi data demo:", error);
-      throw error;
-    }
-  }
-
-  private notifyAll() {
-    const events = ["products-updated", "customers-updated", "transactions-updated", "suppliers-updated", "debt-payments-updated"];
-    events.forEach((e) => window.dispatchEvent(new Event(e)));
   }
 
   getCustomers(): Customer[] {
@@ -277,7 +150,7 @@ class DBService {
   async saveCustomer(customer: Customer): Promise<void> {
     const customers = this.getCustomers();
     const index = customers.findIndex((c) => c.id === customer.id);
-    const c = { ...customer, debtBalance: customer.debtBalance || 0 };
+    const c = { ...customer, debtBalance: customer.debtBalance || 0, pointsBalance: customer.pointsBalance || 0 };
     if (index >= 0) customers[index] = c;
     else customers.push(c);
     localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
@@ -285,22 +158,11 @@ class DBService {
     window.dispatchEvent(new Event("customers-updated"));
   }
 
-  getDebtPayments(): DebtPayment[] {
-    const data = localStorage.getItem(STORAGE_KEYS.DEBT_PAYMENTS);
-    return data ? JSON.parse(data) : [];
-  }
-
-  async createDebtPayment(payment: DebtPayment): Promise<void> {
-    const payments = this.getDebtPayments();
-    payments.unshift(payment);
-    localStorage.setItem(STORAGE_KEYS.DEBT_PAYMENTS, JSON.stringify(payments));
-    const customers = this.getCustomers();
-    const custIdx = customers.findIndex((c) => c.id === payment.customerId);
-    if (custIdx >= 0) {
-      customers[custIdx].debtBalance -= payment.amount;
-      await this.saveCustomer(customers[custIdx]);
-    }
-    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/debt_payments`, payment.id), this.sanitizeForFirestore(payment));
+  async deleteCustomer(id: string): Promise<void> {
+    const customers = this.getCustomers().filter((c) => c.id !== id);
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/customers`, id));
+    window.dispatchEvent(new Event("customers-updated"));
   }
 
   getTransactions(): Transaction[] {
@@ -312,6 +174,8 @@ class DBService {
     const transactions = this.getTransactions();
     transactions.unshift(transaction);
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
+
+    // Kurangi Stok
     const products = this.getProducts();
     transaction.items.forEach((item) => {
       const productIndex = products.findIndex((p) => p.id === item.productId);
@@ -320,75 +184,111 @@ class DBService {
         this.saveProduct(products[productIndex]);
       }
     });
-    if (transaction.paymentMethod === "debt" && transaction.customerId) {
+
+    // Update Customer (Hutang, Belanja, & Poin Member)
+    if (transaction.customerId) {
       const customers = this.getCustomers();
       const custIdx = customers.findIndex((c) => c.id === transaction.customerId);
       if (custIdx >= 0) {
-        customers[custIdx].debtBalance = (customers[custIdx].debtBalance || 0) + transaction.totalAmount;
-        customers[custIdx].totalSpent += transaction.totalAmount;
-        await this.saveCustomer(customers[custIdx]);
-      }
-    } else if (transaction.customerId) {
-      const customers = this.getCustomers();
-      const custIdx = customers.findIndex((c) => c.id === transaction.customerId);
-      if (custIdx >= 0) {
-        customers[custIdx].totalSpent += transaction.totalAmount;
-        await this.saveCustomer(customers[custIdx]);
+        const customer = customers[custIdx];
+        customer.totalSpent += transaction.totalAmount;
+
+        if (transaction.paymentMethod === "debt") {
+          customer.debtBalance = (customer.debtBalance || 0) + transaction.totalAmount;
+        }
+
+        // Otomatis tambah poin jika member
+        if (customer.isMember && transaction.pointsEarned) {
+          customer.pointsBalance = (customer.pointsBalance || 0) + transaction.pointsEarned;
+
+          // Catat log poin
+          const log: PointHistory = {
+            id: `LOG-${Date.now()}`,
+            customerId: customer.id,
+            customerName: customer.name,
+            type: "earn",
+            points: transaction.pointsEarned,
+            timestamp: Date.now(),
+            referenceId: transaction.id,
+          };
+          await this.savePointHistory(log);
+        }
+
+        await this.saveCustomer(customer);
       }
     }
+
     if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/transactions`, transaction.id), this.sanitizeForFirestore(transaction));
   }
 
-  getSuppliers(): Supplier[] {
-    const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
+  getPointRewards(): PointReward[] {
+    const data = localStorage.getItem(STORAGE_KEYS.REWARDS);
     return data ? JSON.parse(data) : [];
   }
-  async saveSupplier(supplier: Supplier): Promise<void> {
-    const suppliers = this.getSuppliers();
-    const index = suppliers.findIndex((s) => s.id === supplier.id);
-    if (index >= 0) suppliers[index] = supplier;
-    else suppliers.push(supplier);
-    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
-    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/suppliers`, supplier.id), this.sanitizeForFirestore(supplier));
-    window.dispatchEvent(new Event("suppliers-updated"));
+
+  async savePointReward(reward: PointReward): Promise<void> {
+    const rewards = this.getPointRewards();
+    const index = rewards.findIndex((r) => r.id === reward.id);
+    if (index >= 0) rewards[index] = reward;
+    else rewards.push(reward);
+    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(rewards));
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_rewards`, reward.id), this.sanitizeForFirestore(reward));
+    window.dispatchEvent(new Event("rewards-updated"));
   }
-  async deleteSupplier(id: string): Promise<void> {
-    const suppliers = this.getSuppliers().filter((s) => s.id !== id);
-    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
-    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/suppliers`, id));
-    window.dispatchEvent(new Event("suppliers-updated"));
+
+  async deletePointReward(id: string): Promise<void> {
+    const rewards = this.getPointRewards().filter((r) => r.id !== id);
+    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(rewards));
+    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_rewards`, id));
+    window.dispatchEvent(new Event("rewards-updated"));
   }
-  getProcurements(): Procurement[] {
-    const data = localStorage.getItem(STORAGE_KEYS.PROCUREMENT);
+
+  getPointHistory(): PointHistory[] {
+    const data = localStorage.getItem(STORAGE_KEYS.POINT_HISTORY);
     return data ? JSON.parse(data) : [];
   }
-  async createProcurement(procurement: Procurement): Promise<void> {
-    const procurements = this.getProcurements();
-    procurements.unshift(procurement);
-    localStorage.setItem(STORAGE_KEYS.PROCUREMENT, JSON.stringify(procurements));
-    const products = this.getProducts();
-    procurement.items.forEach((item) => {
-      const productIndex = products.findIndex((p) => p.id === item.productId);
-      if (productIndex >= 0) {
-        const product = products[productIndex];
-        const unit = product.units.find((u) => u.name === item.unitName);
-        const conversion = unit ? unit.conversion : 1;
-        product.stock += item.quantity * conversion;
-        if (unit) unit.buyPrice = item.buyPrice;
-        this.saveProduct(product);
+
+  async savePointHistory(log: PointHistory): Promise<void> {
+    const history = this.getPointHistory();
+    history.unshift(log);
+    localStorage.setItem(STORAGE_KEYS.POINT_HISTORY, JSON.stringify(history));
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_history`, log.id), this.sanitizeForFirestore(log));
+    window.dispatchEvent(new Event("point-history-updated"));
+  }
+
+  async redeemReward(customerId: string, rewardId: string): Promise<void> {
+    const customers = this.getCustomers();
+    const custIdx = customers.findIndex((c) => c.id === customerId);
+    const rewards = this.getPointRewards();
+    const rewIdx = rewards.findIndex((r) => r.id === rewardId);
+
+    if (custIdx >= 0 && rewIdx >= 0) {
+      const customer = customers[custIdx];
+      const reward = rewards[rewIdx];
+
+      if (customer.pointsBalance >= reward.pointsNeeded && reward.stock > 0) {
+        customer.pointsBalance -= reward.pointsNeeded;
+        await this.saveCustomer(customer);
+
+        reward.stock -= 1;
+        await this.savePointReward(reward);
+
+        const log: PointHistory = {
+          id: `REDEEM-${Date.now()}`,
+          customerId: customer.id,
+          customerName: customer.name,
+          type: "redeem",
+          points: reward.pointsNeeded,
+          timestamp: Date.now(),
+          referenceId: reward.id,
+        };
+        await this.savePointHistory(log);
+      } else {
+        throw new Error("Poin tidak cukup atau hadiah habis.");
       }
-    });
-    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/procurements`, procurement.id), this.sanitizeForFirestore(procurement));
+    }
   }
-  getUserProfile(): UserProfile | null {
-    return this.profile;
-  }
-  async saveUserProfile(profile: UserProfile): Promise<void> {
-    this.profile = profile;
-    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
-    await setDoc(doc(db_fs, "users", profile.uid), this.sanitizeForFirestore(profile));
-    window.dispatchEvent(new Event("profile-updated"));
-  }
+
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     return data ? JSON.parse(data) : [];
@@ -403,18 +303,14 @@ class DBService {
     if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/products`, product.id), this.sanitizeForFirestore(updatedProduct));
     window.dispatchEvent(new Event("products-updated"));
   }
+
   async deleteProduct(id: string): Promise<void> {
     const products = this.getProducts().filter((p) => p.id !== id);
     localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
     if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/products`, id));
     window.dispatchEvent(new Event("products-updated"));
   }
-  async deleteCustomer(id: string): Promise<void> {
-    const customers = this.getCustomers().filter((c) => c.id !== id);
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
-    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/customers`, id));
-    window.dispatchEvent(new Event("updated-customers"));
-  }
+
   getSettings(): AppSettings {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     return data ? JSON.parse(data) : DEFAULT_SETTINGS;
@@ -423,6 +319,184 @@ class DBService {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     window.dispatchEvent(new Event("settings-updated"));
     if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/config`, "settings"), this.sanitizeForFirestore(settings));
+  }
+  getUserProfile(): UserProfile | null {
+    return this.profile;
+  }
+  async saveUserProfile(profile: UserProfile): Promise<void> {
+    this.profile = profile;
+    localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
+    await setDoc(doc(db_fs, "users", profile.uid), this.sanitizeForFirestore(profile));
+    window.dispatchEvent(new Event("profile-updated"));
+  }
+  getSuppliers(): Supplier[] {
+    const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
+    return data ? JSON.parse(data) : [];
+  }
+
+  async saveSupplier(supplier: Supplier): Promise<void> {
+    const suppliers = this.getSuppliers();
+    const index = suppliers.findIndex((s) => s.id === supplier.id);
+    if (index >= 0) suppliers[index] = supplier;
+    else suppliers.push(supplier);
+    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/suppliers`, supplier.id), this.sanitizeForFirestore(supplier));
+    window.dispatchEvent(new Event("suppliers-updated"));
+  }
+
+  async deleteSupplier(id: string): Promise<void> {
+    const suppliers = this.getSuppliers().filter((s) => s.id !== id);
+    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
+    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/suppliers`, id));
+    window.dispatchEvent(new Event("suppliers-updated"));
+  }
+
+  getProcurements(): Procurement[] {
+    const data = localStorage.getItem(STORAGE_KEYS.PROCUREMENT);
+    return data ? JSON.parse(data) : [];
+  }
+
+  async createProcurement(procurement: Procurement): Promise<void> {
+    const procurements = this.getProcurements();
+    procurements.unshift(procurement);
+    localStorage.setItem(STORAGE_KEYS.PROCUREMENT, JSON.stringify(procurements));
+
+    // Update Stok
+    const products = this.getProducts();
+    for (const item of procurement.items) {
+      const pIdx = products.findIndex((p) => p.id === item.productId);
+      if (pIdx >= 0) {
+        products[pIdx].stock += item.quantity;
+        await this.saveProduct(products[pIdx]);
+      }
+    }
+
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/procurements`, procurement.id), this.sanitizeForFirestore(procurement));
+    window.dispatchEvent(new Event("procurements-updated"));
+  }
+
+  getDebtPayments(): DebtPayment[] {
+    const data = localStorage.getItem(STORAGE_KEYS.DEBT_PAYMENTS);
+    return data ? JSON.parse(data) : [];
+  }
+  async createDebtPayment(payment: DebtPayment): Promise<void> {
+    const payments = this.getDebtPayments();
+    payments.unshift(payment);
+    localStorage.setItem(STORAGE_KEYS.DEBT_PAYMENTS, JSON.stringify(payments));
+    const customers = this.getCustomers();
+    const custIdx = customers.findIndex((c) => c.id === payment.customerId);
+    if (custIdx >= 0) {
+      customers[custIdx].debtBalance -= payment.amount;
+      await this.saveCustomer(customers[custIdx]);
+    }
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/debt_payments`, payment.id), this.sanitizeForFirestore(payment));
+    window.dispatchEvent(new Event("debt-payments-updated"));
+  }
+
+  // FIX: Added wipeAllData method to clear local and cloud data
+  async wipeAllData(): Promise<void> {
+    const warungId = this.profile?.warungId;
+    if (!warungId) return;
+
+    // Clear LocalStorage
+    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+    localStorage.removeItem(STORAGE_KEYS.INIT);
+
+    // Clear Firestore (Collections)
+    const collections = ["products", "customers", "transactions", "suppliers", "procurements", "debt_payments", "point_rewards", "point_history"];
+    const batch = writeBatch(db_fs);
+
+    for (const colName of collections) {
+      try {
+        const snap = await getDocs(collection(db_fs, `warungs/${warungId}/${colName}`));
+        snap.forEach((d) => batch.delete(d.ref));
+      } catch (e) {
+        console.error(`Failed to clear ${colName}`, e);
+      }
+    }
+
+    // Clear settings
+    try {
+      batch.delete(doc(db_fs, `warungs/${warungId}/config`, "settings"));
+    } catch (e) {}
+
+    await batch.commit();
+  }
+
+  // FIX: Added injectDemoData method to prepopulate the app
+  async injectDemoData(): Promise<void> {
+    if (!this.profile?.warungId) return;
+
+    await this.wipeAllData();
+
+    const demoProducts: Product[] = [
+      {
+        id: "DEMO-P1",
+        name: "Beras Pandan Wangi 5kg",
+        sku: "899123456781",
+        category: "Sembako",
+        baseUnit: "Karung",
+        stock: 20,
+        minStockAlert: 5,
+        updatedAt: Date.now(),
+        units: [{ name: "Karung", conversion: 1, price: 85000, buyPrice: 78000 }],
+      },
+      {
+        id: "DEMO-P2",
+        name: "Minyak Goreng 1L",
+        sku: "899123456782",
+        category: "Sembako",
+        baseUnit: "Pouch",
+        stock: 50,
+        minStockAlert: 10,
+        updatedAt: Date.now(),
+        units: [{ name: "Pouch", conversion: 1, price: 18000, buyPrice: 16500 }],
+      },
+      {
+        id: "DEMO-P3",
+        name: "Indomie Goreng",
+        sku: "899123456783",
+        category: "Makanan",
+        baseUnit: "Pcs",
+        stock: 200,
+        minStockAlert: 40,
+        updatedAt: Date.now(),
+        units: [
+          { name: "Pcs", conversion: 1, price: 3000, buyPrice: 2700 },
+          { name: "Dus", conversion: 40, price: 110000, buyPrice: 102000 },
+        ],
+      },
+    ];
+
+    const demoCustomers: Customer[] = [
+      {
+        id: "DEMO-C1",
+        name: "Budi Santoso",
+        phone: "08123456789",
+        tier: "Gold",
+        totalSpent: 1200000,
+        debtBalance: 0,
+        joinedAt: Date.now(),
+        isMember: true,
+        pointsBalance: 1200,
+      },
+      {
+        id: "DEMO-C2",
+        name: "Siti Aminah",
+        phone: "08556677889",
+        tier: "Silver",
+        totalSpent: 450000,
+        debtBalance: 50000,
+        joinedAt: Date.now(),
+        isMember: true,
+        pointsBalance: 450,
+      },
+    ];
+
+    for (const p of demoProducts) await this.saveProduct(p);
+    for (const c of demoCustomers) await this.saveCustomer(c);
+
+    localStorage.setItem(STORAGE_KEYS.INIT, "true");
   }
 }
 

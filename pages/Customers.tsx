@@ -33,6 +33,9 @@ const Customers: React.FC = () => {
       totalSpent: editingCustomer.totalSpent || 0,
       debtBalance: editingCustomer.debtBalance || 0,
       joinedAt: editingCustomer.joinedAt || Date.now(),
+      isMember: editingCustomer.isMember || false,
+      pointsBalance: editingCustomer.pointsBalance || 0,
+      memberId: editingCustomer.memberId || (editingCustomer.isMember ? `MB-${Date.now()}` : undefined),
     };
 
     db.saveCustomer(customerToSave);
@@ -60,11 +63,6 @@ const Customers: React.FC = () => {
     }
   };
 
-  const getDiscount = (tier: string) => {
-    const discounts = settings.tierDiscounts || { bronze: 0, silver: 2, gold: 5 };
-    return discounts[tier.toLowerCase() as keyof typeof discounts] || 0;
-  };
-
   const filtered = customers.filter((c) => c.name.toLowerCase().includes(searchTerm.toLowerCase()) || c.phone.includes(searchTerm));
 
   return (
@@ -72,11 +70,11 @@ const Customers: React.FC = () => {
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Manajemen Pelanggan</h1>
-          <p className="text-sm text-slate-500">Total {customers.length} member terdaftar</p>
+          <p className="text-sm text-slate-500">Total {customers.length} pelanggan terdaftar</p>
         </div>
         <Button
           onClick={() => {
-            setEditingCustomer({ tier: "Bronze", debtBalance: 0 });
+            setEditingCustomer({ tier: "Bronze", debtBalance: 0, isMember: false, pointsBalance: 0 });
             setIsModalOpen(true);
           }}
           icon="fa-plus"
@@ -86,16 +84,19 @@ const Customers: React.FC = () => {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-4 border-b border-gray-100 flex justify-between items-center">
           <Input placeholder="Cari nama atau no HP..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="max-w-md" />
+          <div className="flex gap-2">
+            <Badge color="blue">Member: {customers.filter((c) => c.isMember).length}</Badge>
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-gray-50 text-gray-600 font-medium border-b border-gray-200">
               <tr>
                 <th className="px-4 py-3">Nama Pelanggan</th>
-                <th className="px-4 py-3">Level Member</th>
-                <th className="px-4 py-3 text-right">Saldo Hutang</th>
+                <th className="px-4 py-3">Status Member</th>
+                <th className="px-4 py-3 text-right">Saldo Poin</th>
                 <th className="px-4 py-3 text-right">Total Belanja</th>
                 <th className="px-4 py-3 text-center">Aksi</th>
               </tr>
@@ -104,14 +105,19 @@ const Customers: React.FC = () => {
               {filtered.map((cust) => (
                 <tr key={cust.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="font-bold text-gray-900">{cust.name}</div>
+                    <div className="font-bold text-gray-900 flex items-center gap-1">
+                      {cust.name} {cust.isMember && <i className="fa-solid fa-star text-amber-400 text-[10px]"></i>}
+                    </div>
                     <div className="text-[10px] text-gray-400 font-mono">{cust.phone}</div>
                   </td>
                   <td className="px-4 py-3">
-                    <span className={`px-2 py-1 rounded-full text-[10px] font-black border ${getTierColor(cust.tier)}`}>{cust.tier.toUpperCase()}</span>
+                    <div className="flex flex-col gap-1">
+                      <span className={`w-fit px-2 py-0.5 rounded-full text-[9px] font-black border ${getTierColor(cust.tier)}`}>{cust.tier.toUpperCase()}</span>
+                      {cust.isMember ? <span className="text-[9px] font-bold text-blue-600">AKTIF</span> : <span className="text-[9px] font-bold text-gray-400">BUKAN MEMBER</span>}
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right font-mono">
-                    <span className={cust.debtBalance > 0 ? "text-red-600 font-bold" : "text-slate-400"}>{formatRp(cust.debtBalance)}</span>
+                    <span className={cust.isMember ? "text-blue-600 font-bold" : "text-slate-300"}>{cust.pointsBalance.toLocaleString("id-ID")} PTS</span>
                   </td>
                   <td className="px-4 py-3 text-right font-mono font-medium">{formatRp(cust.totalSpent)}</td>
                   <td className="px-4 py-3 text-center">
@@ -132,13 +138,6 @@ const Customers: React.FC = () => {
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-8 text-center text-gray-500 italic">
-                    Data tidak ditemukan
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
@@ -158,11 +157,22 @@ const Customers: React.FC = () => {
         }
       >
         <div className="space-y-4">
-          <Input label="Nama Pelanggan" value={editingCustomer.name || ""} onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })} placeholder="Nama Lengkap" />
-          <Input label="Nomor HP/WA" type="number" value={editingCustomer.phone || ""} onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })} placeholder="08..." />
+          <Input label="Nama Pelanggan" value={editingCustomer.name || ""} onChange={(e) => setEditingCustomer({ ...editingCustomer, name: e.target.value })} />
+          <Input label="Nomor HP/WA" type="number" value={editingCustomer.phone || ""} onChange={(e) => setEditingCustomer({ ...editingCustomer, phone: e.target.value })} />
+
+          <div className="flex items-center gap-3 p-3 bg-blue-50 border border-blue-100 rounded-xl">
+            <div className="flex-1">
+              <p className="text-sm font-bold text-blue-900">Program Member Point</p>
+              <p className="text-[10px] text-blue-700">Aktifkan untuk memberikan poin setiap belanja.</p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" className="sr-only peer" checked={editingCustomer.isMember || false} onChange={(e) => setEditingCustomer({ ...editingCustomer, isMember: e.target.checked })} />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
 
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Level Member</label>
+            <label className="block text-xs font-medium text-gray-500 mb-1">Level Member (Mempengaruhi Poin)</label>
             <div className="grid grid-cols-3 gap-2">
               {(["Bronze", "Silver", "Gold"] as CustomerTier[]).map((tier) => (
                 <button
@@ -173,24 +183,6 @@ const Customers: React.FC = () => {
                   {tier.toUpperCase()}
                 </button>
               ))}
-            </div>
-          </div>
-
-          <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
-            <div className="flex justify-between items-center mb-1">
-              <span className="text-[10px] text-blue-700 font-bold uppercase">Saldo Hutang</span>
-              <Badge color={editingCustomer.debtBalance ? "red" : "green"}>{editingCustomer.debtBalance ? "Punya Hutang" : "Lunas"}</Badge>
-            </div>
-            <p className="text-lg font-black text-blue-800">{formatRp(editingCustomer.debtBalance || 0)}</p>
-            <p className="text-[9px] text-blue-500 mt-1 italic">* Saldo ini otomatis bertambah jika ada transaksi kasir bermetode "Hutang".</p>
-          </div>
-
-          <div className="p-2 bg-gray-50 rounded border border-gray-100">
-            <p className="text-[10px] text-gray-400 uppercase font-bold mb-1">Benefit Diskon:</p>
-            <div className="flex gap-4 text-[10px] font-bold text-gray-600">
-              <span>Gold: {getDiscount("gold")}%</span>
-              <span>Silver: {getDiscount("silver")}%</span>
-              <span>Bronze: {getDiscount("bronze")}%</span>
             </div>
           </div>
         </div>

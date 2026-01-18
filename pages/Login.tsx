@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { auth, db_fs } from "../services/firebase";
 import { db } from "../services/db";
-// Use ESM URLs for firebase/auth to fix export member errors
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from "https://esm.sh/firebase@11.3.1/auth";
-import { doc, getDoc, setDoc } from "https://esm.sh/firebase@11.3.1/firestore";
+// FIX: Using CDN URLs for firebase/auth and firebase/firestore to resolve exported member errors
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider, updateProfile } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 import { Button, Input, Card } from "../components/UI";
 import { UserProfile, UserRole } from "../types";
 

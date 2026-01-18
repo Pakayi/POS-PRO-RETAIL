@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { db } from "../services/db";
 import { AppSettings, UserProfile } from "../types";
-import { Button, Input, Card, Toast, Badge } from "../components/UI";
+import { Button, Input, Card, Toast, Badge, Modal } from "../components/UI";
 import { printerService } from "../services/printer";
 
 const Settings: React.FC = () => {
@@ -17,7 +17,11 @@ const Settings: React.FC = () => {
     securityPin: null,
     printerName: null,
     tierDiscounts: { bronze: 0, silver: 0, gold: 0 },
+    enablePoints: true,
+    pointValue: 1000,
+    tierMultipliers: { bronze: 1, silver: 1, gold: 1 },
   });
+
   const [profile, setProfile] = useState<UserProfile | null>(db.getUserProfile());
   const [isSaved, setIsSaved] = useState(false);
   const [showAutoSaveToast, setShowAutoSaveToast] = useState(false);
@@ -25,11 +29,11 @@ const Settings: React.FC = () => {
 
   const [isConnectingPrinter, setIsConnectingPrinter] = useState(false);
   const [printerStatus, setPrinterStatus] = useState<"disconnected" | "connected">("disconnected");
-
-  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   useEffect(() => {
-    setSettings(db.getSettings());
+    const s = db.getSettings();
+    if (s) setSettings(s);
     setProfile(db.getUserProfile());
     if (printerService.isConnected()) {
       setPrinterStatus("connected");
@@ -50,47 +54,6 @@ const Settings: React.FC = () => {
     }
   };
 
-  const shareWarungId = () => {
-    if (!profile?.warungId) return;
-    const text = `Halo, silakan daftar sebagai Kasir di ${settings.storeName}.\n\nDownload/Buka aplikasi Warung POS, klik 'Daftar', pilih role 'KASIR' dan masukkan Warung ID ini:\n\n*${profile.warungId}*`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-  };
-
-  const handleGenerateNewWarungId = async () => {
-    if (!profile || profile.role !== "owner") return;
-    if (confirm("Ingin mengubah ID Warung menjadi format profesional?")) {
-      const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-      let newId = "W-";
-      for (let i = 0; i < 6; i++) newId += chars.charAt(Math.floor(Math.random() * chars.length));
-      const updatedProfile = { ...profile, warungId: newId };
-      await db.saveUserProfile(updatedProfile);
-      setProfile(updatedProfile);
-    }
-  };
-
-  const handleConnectPrinter = async () => {
-    setIsConnectingPrinter(true);
-    try {
-      const deviceName = await printerService.connect();
-      const updated = { ...settings, printerName: deviceName };
-      setSettings(updated);
-      db.saveSettings(updated);
-      setPrinterStatus("connected");
-    } catch (error: any) {
-      alert(`Gagal: ${error.message}`);
-    } finally {
-      setIsConnectingPrinter(false);
-    }
-  };
-
-  const handleDisconnectPrinter = async () => {
-    await printerService.disconnect();
-    const updated = { ...settings, printerName: null };
-    setSettings(updated);
-    db.saveSettings(updated);
-    setPrinterStatus("disconnected");
-  };
-
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -107,44 +70,58 @@ const Settings: React.FC = () => {
   };
 
   const handleInjectDemo = async () => {
-    if (confirm("Gunakan Data Demo? Semua data transaksi/stok Anda saat ini akan dihapus.")) {
-      setIsMaintenanceMode(true);
+    if (confirm("PERHATIAN: Ini akan MENGHAPUS semua data Anda saat ini dan menggantinya dengan data demo (Produk, Transaksi, Member). Lanjutkan?")) {
+      setIsProcessing(true);
       try {
         await db.injectDemoData();
-        setIsMaintenanceMode(false);
-        alert("Data demo berhasil dimuat!");
-        window.location.hash = "#/";
-      } catch (err: any) {
-        setIsMaintenanceMode(false);
-        console.error(err);
-        alert("Gagal memuat data: " + (err.message || "Cek koneksi atau izin Firebase."));
+        alert("Injeksi Data Demo Berhasil!");
+        window.location.reload();
+      } catch (e: any) {
+        alert("Gagal injeksi: " + e.message);
+      } finally {
+        setIsProcessing(false);
       }
     }
   };
 
-  const handleResetApp = async () => {
-    const confirmation = prompt("Ketik 'KONFIRMASI' untuk reset data.");
-    if (confirmation === "KONFIRMASI") {
-      setIsMaintenanceMode(true);
-      try {
-        await db.wipeAllData();
-        setIsMaintenanceMode(false);
-        alert("Reset berhasil.");
-        window.location.hash = "#/";
-      } catch (err: any) {
-        setIsMaintenanceMode(false);
-        alert("Gagal reset: " + err.message);
+  const handleWipeData = async () => {
+    if (confirm("PERHATIAN: Ini akan MENGHAPUS PERMANEN semua data warung Anda. Tindakan ini tidak bisa dibatalkan! Ketik 'HAPUS' untuk konfirmasi.")) {
+      const confirmText = prompt("Ketik HAPUS untuk konfirmasi:");
+      if (confirmText === "HAPUS") {
+        setIsProcessing(true);
+        try {
+          await db.wipeAllData();
+          alert("Database berhasil dibersihkan.");
+          window.location.reload();
+        } catch (e: any) {
+          alert("Gagal hapus: " + e.message);
+        } finally {
+          setIsProcessing(false);
+        }
       }
     }
   };
 
-  const isOldIdFormat = profile?.warungId && profile.warungId.length > 15 && !profile.warungId.startsWith("W-");
+  const handleConnectPrinter = async () => {
+    setIsConnectingPrinter(true);
+    try {
+      const name = await printerService.connect();
+      const newSettings = { ...settings, printerName: name };
+      setSettings(newSettings);
+      db.saveSettings(newSettings);
+      setPrinterStatus("connected");
+    } catch (e: any) {
+      if (e.message !== "Pencarian dibatalkan.") alert(e.message);
+    } finally {
+      setIsConnectingPrinter(false);
+    }
+  };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto pb-10">
+    <div className="space-y-6 max-w-5xl mx-auto pb-20">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-200 pb-4">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Pengaturan</h1>
+          <h1 className="text-2xl font-bold text-slate-800">Pengaturan Warung</h1>
           <div className="flex items-center gap-2 mt-1">
             <Badge color={profile?.role === "owner" ? "blue" : "green"}>Role: {profile?.role?.toUpperCase()}</Badge>
           </div>
@@ -154,114 +131,141 @@ const Settings: React.FC = () => {
         </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="space-y-6">
-          {/* Section Warung ID & Manajemen Kasir */}
-          <Card className="p-6 bg-slate-900 text-white border-none shadow-xl relative overflow-hidden">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-sm uppercase tracking-widest text-blue-400">Warung ID</h3>
-              <i className="fa-solid fa-users text-slate-600"></i>
-            </div>
-            <div className="flex gap-2 mb-3">
-              <div className={`flex-1 bg-slate-700/50 border ${isOldIdFormat ? "border-red-500/50" : "border-slate-600"} rounded-lg px-3 py-2 font-mono text-sm flex items-center overflow-hidden`}>
-                <span className="truncate">{profile?.warungId || "Loading..."}</span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 space-y-6">
+          {/* IDENTITAS WARUNG */}
+          <Card className="p-6 space-y-4">
+            <h2 className="text-lg font-bold text-gray-800 border-b border-gray-100 pb-2 flex items-center gap-2">
+              <i className="fa-solid fa-store text-blue-500"></i> Profil Warung
+            </h2>
+            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+              <div className="w-20 h-20 bg-white rounded-xl border flex items-center justify-center overflow-hidden shadow-inner">
+                {settings.logoUrl ? <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" /> : <i className="fa-solid fa-camera text-gray-300 text-2xl"></i>}
               </div>
-              <Button onClick={copyWarungId} variant="secondary" size="sm" className="bg-slate-600 border-none shrink-0">
-                <i className={`fa-solid ${copiedId ? "fa-check" : "fa-copy"}`}></i>
-              </Button>
+              <div>
+                <label className="px-4 py-2 bg-white border border-gray-200 rounded-lg text-xs font-bold cursor-pointer shadow-sm hover:bg-gray-50 transition-colors">
+                  Ganti Logo <input type="file" className="hidden" onChange={handleLogoUpload} />
+                </label>
+                <p className="text-[10px] text-gray-400 mt-2 italic">Format: JPG/PNG, Max: 1MB</p>
+              </div>
             </div>
-            <Button onClick={shareWarungId} variant="primary" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none text-xs py-2 font-bold mb-3" icon="fa-brands fa-whatsapp">
-              UNDANG KASIR (KIRIM ID)
-            </Button>
-            {isOldIdFormat && profile?.role === "owner" && (
-              <button onClick={handleGenerateNewWarungId} className="w-full py-2 bg-blue-600 text-white text-[10px] font-bold rounded-lg shadow-lg">
-                UBAH KE ID PROFESIONAL
-              </button>
-            )}
-            <p className="text-[10px] text-slate-400 italic text-center">Berikan ID ini kepada staff lu pas mereka daftar akun.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input label="Nama Toko" value={settings.storeName} onChange={(e) => setSettings({ ...settings, storeName: e.target.value })} />
+              <Input label="Nomor Telepon" value={settings.storePhone} onChange={(e) => setSettings({ ...settings, storePhone: e.target.value })} />
+            </div>
+            <Input label="Alamat Lengkap" value={settings.storeAddress} onChange={(e) => setSettings({ ...settings, storeAddress: e.target.value })} />
+            <Input label="Pesan Kaki Struk (Footer)" value={settings.footerMessage} onChange={(e) => setSettings({ ...settings, footerMessage: e.target.value })} />
           </Card>
 
+          {/* KONFIGURASI POIN MEMBER */}
           <Card className="p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-800 border-b border-gray-100 pb-2 mb-4">Profil Warung</h2>
-            <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
-              <div className="w-16 h-16 bg-white rounded-xl border flex items-center justify-center overflow-hidden">
-                {settings.logoUrl ? <img src={settings.logoUrl} alt="Logo" className="w-full h-full object-contain" /> : <i className="fa-solid fa-camera text-gray-300"></i>}
+            <h2 className="text-lg font-bold text-gray-800 border-b border-gray-100 pb-2 flex items-center gap-2">
+              <i className="fa-solid fa-star text-amber-500"></i> Loyalty Program (Poin)
+            </h2>
+            <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-100 rounded-2xl">
+              <div className="flex-1">
+                <p className="text-sm font-bold text-blue-900">Aktifkan Program Poin</p>
+                <p className="text-[10px] text-blue-700 italic">Berikan poin otomatis kepada member saat transaksi di kasir.</p>
               </div>
-              <label className="px-4 py-2 bg-white border rounded-lg text-xs font-bold cursor-pointer shadow-sm">
-                Unggah Logo <input type="file" className="hidden" onChange={handleLogoUpload} />
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={settings.enablePoints} onChange={(e) => setSettings({ ...settings, enablePoints: e.target.checked })} />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
               </label>
             </div>
-            <Input label="Nama Toko" value={settings.storeName} onChange={(e) => setSettings({ ...settings, storeName: e.target.value })} />
-            <Input label="Alamat" value={settings.storeAddress} onChange={(e) => setSettings({ ...settings, storeAddress: e.target.value })} />
-            <Input label="Telepon (WA)" value={settings.storePhone} onChange={(e) => setSettings({ ...settings, storePhone: e.target.value })} />
-          </Card>
 
-          <Card className="p-6 border-red-200 bg-red-50/30">
-            <h2 className="text-lg font-bold text-red-800 border-b border-red-100 pb-2 mb-4">Manajemen Data</h2>
-            <p className="text-xs text-slate-500 mb-4 italic">Gunakan fitur ini untuk demo atau membersihkan database toko Anda.</p>
-            <div className="space-y-3">
-              <Button onClick={handleInjectDemo} variant="outline" className="w-full bg-white text-blue-600 border-blue-200" icon="fa-solid fa-flask">
-                Isi Data Demo (Simulasi)
-              </Button>
-              <Button onClick={handleResetApp} variant="danger" className="w-full" icon="fa-solid fa-triangle-exclamation">
-                Reset Semua Data (Pabrik)
-              </Button>
+            <div className="max-w-xs">
+              <Input label="Nilai Belanja per 1 Poin (Rp)" type="number" value={settings.pointValue} onChange={(e) => setSettings({ ...settings, pointValue: Number(e.target.value) })} prefix="Rp" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wider">Multiplier Poin per Level</label>
+              <div className="grid grid-cols-3 gap-3">
+                <Input label="Bronze (x)" type="number" step="0.1" value={settings.tierMultipliers.bronze} onChange={(e) => setSettings({ ...settings, tierMultipliers: { ...settings.tierMultipliers, bronze: Number(e.target.value) } })} />
+                <Input label="Silver (x)" type="number" step="0.1" value={settings.tierMultipliers.silver} onChange={(e) => setSettings({ ...settings, tierMultipliers: { ...settings.tierMultipliers, silver: Number(e.target.value) } })} />
+                <Input label="Gold (x)" type="number" step="0.1" value={settings.tierMultipliers.gold} onChange={(e) => setSettings({ ...settings, tierMultipliers: { ...settings.tierMultipliers, gold: Number(e.target.value) } })} />
+              </div>
+              <p className="text-[10px] text-slate-400 mt-2 bg-slate-50 p-2 rounded-lg italic">* Tips: Atur Gold lebih tinggi (misal: 1.5) supaya pelanggan lebih termotivasi belanja banyak.</p>
             </div>
           </Card>
         </div>
 
         <div className="space-y-6">
-          <Card className="p-6 space-y-4">
-            <h2 className="text-lg font-bold text-gray-800 border-b border-gray-100 pb-2 mb-4">Pembayaran & Printer</h2>
-            <div className="p-4 bg-blue-50 rounded-xl border border-blue-100 space-y-3">
-              <div className="flex justify-between items-center">
-                <h3 className="font-bold text-blue-900 text-xs uppercase tracking-wider">Metode QRIS</h3>
-                <i className="fa-solid fa-qrcode text-blue-400"></i>
-              </div>
-              <Input placeholder="Contoh: 08123456789 atau ID Merchant" value={settings.storePhone} label="Nomor E-Wallet/ID Merchant" onChange={(e) => setSettings({ ...settings, storePhone: e.target.value })} />
-              <p className="text-[10px] text-blue-700 italic">Data ini akan digunakan untuk simulasi QRIS dinamis di kasir.</p>
+          {/* WARUNG ID & SECURITY */}
+          <Card className="p-6 bg-slate-900 text-white border-none shadow-xl relative overflow-hidden">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-bold text-sm uppercase tracking-widest text-blue-400">Warung ID</h3>
+              <i className="fa-solid fa-key text-slate-700"></i>
             </div>
+            <div className="flex gap-2 mb-3">
+              <div className="flex-1 bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 font-mono text-sm flex items-center overflow-hidden">
+                <span className="truncate">{profile?.warungId || "Loading..."}</span>
+              </div>
+              <Button onClick={copyWarungId} variant="secondary" size="sm" className="bg-slate-700 border-none shrink-0 hover:bg-slate-600">
+                <i className={`fa-solid ${copiedId ? "fa-check text-green-400" : "fa-copy"}`}></i>
+              </Button>
+            </div>
+            <p className="text-[10px] text-slate-500 italic mb-6">Kasir butuh ID ini untuk mendaftar ke toko Anda.</p>
 
-            <div className="p-4 bg-indigo-50 rounded-xl border border-indigo-100">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="font-semibold text-indigo-900 text-sm">Printer Bluetooth</h3>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${printerStatus === "connected" ? "bg-green-100 text-green-700" : "bg-gray-200 text-gray-600"}`}>{printerStatus === "connected" ? "Aktif" : "Terputus"}</span>
-              </div>
-              {printerStatus === "connected" ? (
-                <button onClick={handleDisconnectPrinter} className="w-full py-2 bg-white text-red-500 rounded-lg text-xs border font-bold">
-                  Putus Koneksi
-                </button>
-              ) : (
-                <Button onClick={handleConnectPrinter} disabled={isConnectingPrinter} size="sm" className="w-full">
-                  Hubungkan Printer
-                </Button>
-              )}
+            <div className="space-y-3 pt-4 border-t border-slate-800">
+              <h3 className="text-xs font-bold text-blue-400 uppercase tracking-widest">Proteksi Aplikasi</h3>
+              <Input
+                label="PIN Keamanan (6 Digit)"
+                type="password"
+                maxLength={6}
+                value={settings.securityPin || ""}
+                onChange={(e) => setSettings({ ...settings, securityPin: e.target.value })}
+                placeholder="Kosongkan jika tanpa PIN"
+                className="!bg-slate-800 !border-slate-700 !text-white placeholder:text-slate-600"
+              />
+              <p className="text-[9px] text-slate-500">PIN akan diminta saat membuka menu Laporan atau Pengaturan.</p>
             </div>
-            <Input label="Pesan Footer Struk" value={settings.footerMessage} onChange={(e) => setSettings({ ...settings, footerMessage: e.target.value })} />
           </Card>
 
-          <Card className="p-6">
-            <h2 className="text-lg font-bold text-gray-800 border-b border-gray-100 pb-2 mb-4">Diskon Member (%)</h2>
-            <div className="grid grid-cols-3 gap-3">
-              <Input label="Gold" type="number" value={settings.tierDiscounts.gold} onChange={(e) => setSettings({ ...settings, tierDiscounts: { ...settings.tierDiscounts, gold: Number(e.target.value) } })} />
-              <Input label="Silver" type="number" value={settings.tierDiscounts.silver} onChange={(e) => setSettings({ ...settings, tierDiscounts: { ...settings.tierDiscounts, silver: Number(e.target.value) } })} />
-              <Input label="Bronze" type="number" value={settings.tierDiscounts.bronze} onChange={(e) => setSettings({ ...settings, tierDiscounts: { ...settings.tierDiscounts, bronze: Number(e.target.value) } })} />
+          {/* PRINTER SETTINGS */}
+          <Card className="p-6 space-y-4">
+            <h3 className="font-bold text-gray-800 text-sm flex items-center gap-2">
+              <i className="fa-solid fa-print text-slate-400"></i> Printer Struk
+            </h3>
+            <div className={`p-3 rounded-xl border flex items-center justify-between ${printerStatus === "connected" ? "bg-emerald-50 border-emerald-100" : "bg-gray-50 border-gray-100"}`}>
+              <div>
+                <p className="text-[10px] font-bold text-gray-400 uppercase">Status</p>
+                <p className={`text-xs font-bold ${printerStatus === "connected" ? "text-emerald-600" : "text-gray-500"}`}>{printerStatus === "connected" ? "TERSAMBUNG" : "TERPUTUS"}</p>
+              </div>
+              <Button size="sm" variant={printerStatus === "connected" ? "secondary" : "primary"} onClick={handleConnectPrinter} disabled={isConnectingPrinter}>
+                {isConnectingPrinter ? <i className="fa-solid fa-spinner fa-spin"></i> : printerStatus === "connected" ? "Ganti" : "Cari"}
+              </Button>
             </div>
+            {settings.printerName && <p className="text-[10px] text-gray-400 text-center font-mono">{settings.printerName}</p>}
+          </Card>
+
+          {/* DANGER ZONE / MOCK DATA */}
+          <Card className="p-6 border-red-100 bg-red-50/30 space-y-4">
+            <h3 className="text-sm font-bold text-red-600 uppercase tracking-widest flex items-center gap-2">
+              <i className="fa-solid fa-triangle-exclamation"></i> Danger Zone
+            </h3>
+            <div className="space-y-2">
+              <Button onClick={handleInjectDemo} disabled={isProcessing} variant="outline" className="w-full text-blue-600 border-blue-200 bg-white hover:bg-blue-50 text-xs font-bold" icon="fa-solid fa-flask">
+                INJEKSI DATA DEMO
+              </Button>
+              <Button onClick={handleWipeData} disabled={isProcessing} variant="danger" className="w-full text-xs font-bold" icon="fa-solid fa-trash-can">
+                BERSIHKAN DATABASE
+              </Button>
+            </div>
+            <p className="text-[9px] text-red-400 text-center italic">Gunakan Data Demo untuk mencoba semua fitur aplikasi dengan cepat.</p>
           </Card>
         </div>
       </div>
 
-      {isMaintenanceMode && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-6 text-center">
-          <Card className="p-8 max-w-sm w-full space-y-4">
-            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-            <h3 className="font-bold">Memproses Data...</h3>
-            <p className="text-xs text-slate-500 italic">Mohon tunggu sebentar, kami sedang mengatur ulang database Anda.</p>
+      {isProcessing && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center">
+          <Card className="p-8 text-center space-y-4">
+            <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto"></div>
+            <p className="font-bold">Sedang memproses...</p>
           </Card>
         </div>
       )}
 
-      <Toast isOpen={showAutoSaveToast} onClose={() => setShowAutoSaveToast(false)} type="success" message="Logo berhasil diupdate!" />
+      <Toast isOpen={showAutoSaveToast} onClose={() => setShowAutoSaveToast(false)} type="success" message="Logo warung berhasil diperbarui!" />
     </div>
   );
 };

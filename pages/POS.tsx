@@ -134,6 +134,7 @@ const POS: React.FC = () => {
 
   const calculations = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
     let discountRate = 0;
     if (selectedCustomer) {
       const discounts = settings.tierDiscounts || { bronze: 0, silver: 2, gold: 5 };
@@ -141,7 +142,16 @@ const POS: React.FC = () => {
     }
     const discountAmount = subtotal * discountRate;
     const total = subtotal - discountAmount;
-    return { subtotal, discountAmount, total };
+
+    // Hitung Estimasi Poin (Jika Member)
+    let pointsEarned = 0;
+    if (selectedCustomer?.isMember && settings.enablePoints) {
+      const basePoints = Math.floor(total / settings.pointValue);
+      const multiplier = settings.tierMultipliers[selectedCustomer.tier.toLowerCase() as keyof typeof settings.tierMultipliers] || 1;
+      pointsEarned = Math.floor(basePoints * multiplier);
+    }
+
+    return { subtotal, discountAmount, total, pointsEarned };
   }, [cart, settings, selectedCustomer]);
 
   const handleCheckout = async () => {
@@ -166,6 +176,7 @@ const POS: React.FC = () => {
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
       discountAmount: calculations.discountAmount,
+      pointsEarned: calculations.pointsEarned,
     };
 
     await db.createTransaction(transaction);
@@ -184,7 +195,6 @@ const POS: React.FC = () => {
       if (printerService.isConnected()) {
         await printerService.printTransaction(lastTransaction, settings, "58mm");
       } else {
-        // Fallback ke window print browser (bisa save as PDF)
         const printContent = generateReceiptHTML(lastTransaction, settings);
         const iframe = document.getElementById("printFrame") as HTMLIFrameElement;
         if (iframe?.contentWindow) {
@@ -255,26 +265,31 @@ const POS: React.FC = () => {
         <div className="p-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center shrink-0">
           <h2 className="font-bold text-gray-800">Keranjang</h2>
           <div className="flex gap-1.5">
-            {printerService.isSupported() && (
-              <button
-                onClick={handleConnectPrinter}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${printerStatus === "connected" ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-white text-gray-400 border-gray-200 hover:text-blue-500"}`}
-              >
-                <i className="fa-solid fa-print"></i>
-                {printerStatus === "connected" ? "READY" : "PRINTER"}
-              </button>
-            )}
             <button
               onClick={() => setShowCustomerModal(true)}
-              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black ${selectedCustomer ? "bg-blue-50 text-blue-600 border-blue-200" : "bg-white text-gray-500 border-gray-200"}`}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${selectedCustomer ? "bg-blue-50 text-blue-600 border-blue-200 ring-2 ring-blue-100" : "bg-white text-gray-500 border-gray-200"}`}
             >
               <i className="fa-solid fa-user"></i>
               {selectedCustomer ? selectedCustomer.name.split(" ")[0].toUpperCase() : "PELANGGAN"}
+              {selectedCustomer?.isMember && <i className="fa-solid fa-star text-amber-400 ml-1"></i>}
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {selectedCustomer?.isMember && (
+            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-3 rounded-xl shadow-sm mb-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <p className="text-[10px] opacity-80 uppercase font-bold tracking-widest">Saldo Poin Member</p>
+                  <p className="text-xl font-black">{selectedCustomer.pointsBalance.toLocaleString("id-ID")} PTS</p>
+                </div>
+                <Badge color="yellow">{selectedCustomer.tier.toUpperCase()}</Badge>
+              </div>
+              <div className="mt-2 text-[10px] font-medium py-1 px-2 bg-white/10 rounded-lg inline-block">Dapat +{calculations.pointsEarned} poin dari transaksi ini</div>
+            </div>
+          )}
+
           {cart.map((item, idx) => (
             <div key={idx} className="flex justify-between items-start text-sm">
               <div className="flex-1">
@@ -323,7 +338,6 @@ const POS: React.FC = () => {
         </div>
       </Card>
 
-      {/* MODAL CHECKOUT */}
       <Modal isOpen={showCheckout} onClose={() => setShowCheckout(false)} title="Bayar">
         <div className="space-y-4">
           <div className="flex bg-slate-100 p-1 rounded-xl">
@@ -335,6 +349,7 @@ const POS: React.FC = () => {
           </div>
           <div className="text-center py-4 bg-blue-50 rounded-xl border border-blue-100">
             <p className="text-3xl font-black text-blue-800">Rp {calculations.total.toLocaleString("id-ID")}</p>
+            {calculations.pointsEarned > 0 && <p className="text-xs text-blue-600 font-bold mt-1">Dapat +{calculations.pointsEarned} Poin Member</p>}
           </div>
           {paymentMethod === "cash" && (
             <div className="space-y-4">
@@ -350,23 +365,11 @@ const POS: React.FC = () => {
         </div>
       </Modal>
 
-      {/* MODAL PILIH SATUAN SCAN */}
-      <Modal isOpen={!!scanSelection} onClose={() => setScanSelection(null)} title="Pilih Satuan">
-        <div className="grid grid-cols-1 gap-2">
-          {scanSelection?.units.map((u, i) => (
-            <button key={i} onClick={() => addToCart(scanSelection, u)} className="w-full p-4 border rounded-xl hover:bg-blue-50 text-left">
-              <div className="font-bold text-slate-800">{u.name}</div>
-              <div className="text-sm text-blue-600 font-black">Rp {u.price.toLocaleString("id-ID")}</div>
-            </button>
-          ))}
-        </div>
-      </Modal>
-
       <Modal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} title="Pilih Pelanggan">
-        <Input placeholder="Cari pelanggan..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+        <Input placeholder="Cari nama atau no HP member..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
         <div className="mt-4 max-h-60 overflow-y-auto divide-y">
           {allCustomers
-            .filter((c) => c.name.toLowerCase().includes(customerSearch.toLowerCase()))
+            .filter((c) => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch))
             .map((c) => (
               <button
                 key={c.id}
@@ -374,10 +377,18 @@ const POS: React.FC = () => {
                   setSelectedCustomer(c);
                   setShowCustomerModal(false);
                 }}
-                className="w-full flex justify-between py-3 px-2 hover:bg-slate-50"
+                className="w-full flex justify-between items-center py-3 px-2 hover:bg-slate-50"
               >
-                <span className="font-bold text-sm text-slate-800">{c.name}</span>
-                {c.debtBalance > 0 && <Badge color="red">Hutang</Badge>}
+                <div className="text-left">
+                  <span className="font-bold text-sm text-slate-800 flex items-center gap-1">
+                    {c.name} {c.isMember && <i className="fa-solid fa-star text-amber-400 text-[10px]"></i>}
+                  </span>
+                  <p className="text-[10px] text-slate-400 font-mono">{c.phone}</p>
+                </div>
+                <div className="flex gap-1 items-center">
+                  {c.isMember && <Badge color="blue">{c.pointsBalance.toLocaleString("id-ID")} PTS</Badge>}
+                  {c.debtBalance > 0 && <Badge color="red">HUTANG</Badge>}
+                </div>
               </button>
             ))}
         </div>
@@ -385,7 +396,6 @@ const POS: React.FC = () => {
 
       <Modal isOpen={showScanner} onClose={() => setShowScanner(false)} title="Scanner">
         <div id="reader" className="w-full max-w-[300px] mx-auto bg-black rounded-xl aspect-square border-2 border-blue-500 overflow-hidden"></div>
-        <p className="text-center text-xs text-slate-400 mt-4 italic">Arahkan kamera ke barcode produk</p>
       </Modal>
 
       <Modal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="Berhasil">
@@ -394,6 +404,7 @@ const POS: React.FC = () => {
             <i className="fa-solid fa-check"></i>
           </div>
           <p className="text-2xl font-black">Rp {lastTransaction?.totalAmount.toLocaleString("id-ID")}</p>
+          {lastTransaction?.pointsEarned ? <div className="p-2 bg-blue-50 border border-blue-100 rounded-xl text-blue-700 text-xs font-bold">Member dapat +{lastTransaction.pointsEarned} Poin!</div> : null}
           <div className="grid grid-cols-2 gap-2">
             <Button onClick={handlePrint} icon="fa-solid fa-print">
               Struk
@@ -452,6 +463,7 @@ const generateReceiptHTML = (tx: Transaction, settings: AppSettings) => {
               : `<tr><td>METODE</td><td style="text-align:right;">${tx.paymentMethod.toUpperCase()}</td></tr>`
           }
         </table>
+        ${tx.pointsEarned ? `<div class="line"></div><div class="center">Point Member Baru: +${tx.pointsEarned}</div>` : ""}
         <div class="line"></div>
         <div class="center">${settings.footerMessage}</div>
         <br/><br/>

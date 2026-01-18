@@ -9,17 +9,20 @@ import Reports from "./pages/Reports";
 import Suppliers from "./pages/Suppliers";
 import Procurement from "./pages/Procurement";
 import DebtBook from "./pages/DebtBook";
+import Loyalty from "./pages/Rewards";
 import Login from "./pages/Login";
 import { PinGuard } from "./components/Security";
 import { db } from "./services/db";
 import { auth } from "./services/firebase";
-import { onAuthStateChanged, signOut, type User } from "firebase/auth";
+// FIX: Using CDN URL for firebase/auth to ensure exports like onAuthStateChanged and signOut are available
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { OfflineIndicator, Badge } from "./components/UI";
 import { UserProfile } from "./types";
 
 const NAV_ITEMS = [
   { path: "/", label: "Dashboard", icon: "fa-gauge-high", roles: ["owner", "staff"] },
   { path: "/pos", label: "Kasir (POS)", icon: "fa-cash-register", roles: ["owner", "staff"] },
+  { path: "/loyalty", label: "Program Poin", icon: "fa-star", roles: ["owner", "staff"] },
   { path: "/debt-book", label: "Buku Hutang", icon: "fa-book", roles: ["owner", "staff"] },
   { path: "/procurement", label: "Stok Masuk", icon: "fa-truck-loading", roles: ["owner"] },
   { path: "/products", label: "Produk", icon: "fa-box", roles: ["owner"] },
@@ -42,11 +45,12 @@ const SidebarItem = ({ path, label, icon, isCollapsed }: any) => (
 );
 
 const App: React.FC = () => {
-  const [user, setUser] = useState<User | null>(null);
+  // FIX: Using any type for user to accommodate CDN module limitations
+  const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser: any) => {
       setUser(currentUser);
       setLoading(false);
     });
@@ -78,7 +82,7 @@ const App: React.FC = () => {
   );
 };
 
-const Layout: React.FC<{ user: User }> = ({ user }) => {
+const Layout: React.FC<{ user: any }> = ({ user }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const [appSettings, setAppSettings] = useState(db.getSettings());
@@ -185,6 +189,14 @@ const Layout: React.FC<{ user: User }> = ({ user }) => {
               }
             />
             <Route
+              path="/loyalty"
+              element={
+                <PinGuard>
+                  <Loyalty />
+                </PinGuard>
+              }
+            />
+            <Route
               path="/debt-book"
               element={
                 <PinGuard>
@@ -193,7 +205,6 @@ const Layout: React.FC<{ user: User }> = ({ user }) => {
               }
             />
 
-            {/* Owner Protected Routes */}
             {profile?.role === "owner" && (
               <>
                 <Route path="/procurement" element={<Procurement />} />
