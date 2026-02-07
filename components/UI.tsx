@@ -1,107 +1,135 @@
 
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 
-// --- Card ---
-export const Card: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`bg-white rounded-xl border border-gray-100 shadow-sm ${className}`}>
-    {children}
-  </div>
-);
+// --- Card Premium & Vibrant ---
+interface CardProps {
+  children: React.ReactNode;
+  className?: string;
+  noPadding?: boolean;
+  variant?: 'white' | 'blue-header' | 'green-header' | 'red-header' | 'amber-header' | 'indigo-header';
+}
 
-// --- Button ---
+export const Card: React.FC<CardProps> = ({ 
+  children, className = '', noPadding = false, variant = 'white' 
+}) => {
+  const headerColors = {
+    'white': '',
+    'blue-header': 'border-t-4 border-t-blue-500',
+    'green-header': 'border-t-4 border-t-emerald-500',
+    'red-header': 'border-t-4 border-t-red-500',
+    'amber-header': 'border-t-4 border-t-amber-500',
+    'indigo-header': 'border-t-4 border-t-brand-600',
+  };
+
+  return (
+    <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden ${headerColors[variant]} ${noPadding ? '' : 'p-5'} ${className}`}>
+      {children}
+    </div>
+  );
+};
+
+// --- Dashboard Stat Card (Vibrant) ---
+interface StatCardProps {
+  title: string;
+  value: string | number;
+  icon: string;
+  color: 'cyan' | 'amber' | 'emerald' | 'crimson' | 'indigo';
+  onClick?: () => void;
+}
+
+export const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, onClick }) => {
+  const colors = {
+    cyan: 'bg-cyan-500',
+    amber: 'bg-amber-500',
+    emerald: 'bg-emerald-500',
+    crimson: 'bg-red-500',
+    indigo: 'bg-brand-600',
+  };
+
+  return (
+    <div className={`${colors[color]} rounded-xl shadow-md overflow-hidden relative group transition-transform active:scale-95 cursor-pointer`} onClick={onClick}>
+      <div className="p-5 text-white">
+        <div className="relative z-10">
+          <h3 className="text-4xl font-black mb-1">{value}</h3>
+          <p className="text-sm font-bold opacity-90 uppercase tracking-tight">{title}</p>
+        </div>
+        {/* Background Icon */}
+        <div className="absolute top-4 right-4 text-6xl opacity-20 group-hover:scale-110 transition-transform">
+          <i className={icon}></i>
+        </div>
+      </div>
+      <button className="w-full py-2 bg-black/10 hover:bg-black/20 text-white text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
+        Detail Selengkapnya <i className="fa-solid fa-circle-right"></i>
+      </button>
+    </div>
+  );
+};
+
+// --- Button Premium ---
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'outline' | 'success';
   size?: 'sm' | 'md' | 'lg';
   icon?: string;
+  loading?: boolean;
 }
+
 export const Button: React.FC<ButtonProps> = ({ 
-  children, variant = 'primary', size = 'md', icon, className = '', ...props 
+  children, variant = 'primary', size = 'md', icon, loading, className = '', ...props 
 }) => {
-  const base = "inline-flex items-center justify-center font-medium transition-colors rounded-lg focus:outline-none focus:ring-2 focus:ring-offset-1";
+  const base = "inline-flex items-center justify-center font-semibold transition-all duration-200 rounded-xl focus:outline-none focus:ring-4 disabled:opacity-50 active:scale-[0.97]";
   
   const variants = {
-    primary: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500",
-    secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-300",
-    danger: "bg-red-50 text-red-600 hover:bg-red-100 focus:ring-red-500",
-    ghost: "text-gray-600 hover:bg-gray-50 focus:ring-gray-200",
-    outline: "border border-gray-300 text-gray-700 hover:bg-gray-50 focus:ring-gray-200"
+    primary: "bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-100 shadow-md shadow-brand-200",
+    secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-200",
+    success: "bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-100 shadow-md shadow-emerald-200",
+    danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 focus:ring-red-50",
+    ghost: "text-slate-600 hover:bg-slate-50 focus:ring-slate-100",
+    outline: "border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:ring-slate-100"
   };
 
   const sizes = {
-    sm: "px-3 py-1.5 text-xs",
-    md: "px-4 py-2 text-sm",
-    lg: "px-6 py-3 text-base"
+    sm: "px-3.5 py-1.5 text-xs gap-1.5",
+    md: "px-5 py-2.5 text-sm gap-2",
+    lg: "px-6 py-3.5 text-base gap-2.5"
   };
 
   return (
     <button className={`${base} ${variants[variant]} ${sizes[size]} ${className}`} {...props}>
-      {icon && <i className={`${icon} ${children ? 'mr-2' : ''}`}></i>}
+      {loading ? (
+        <i className="fa-solid fa-circle-notch fa-spin"></i>
+      ) : icon ? (
+        <i className={`${icon}`}></i>
+      ) : null}
       {children}
     </button>
   );
 };
 
-// --- Input ---
-// FIX: Use Omit to avoid conflict with standard 'prefix' property which expects a string
+// --- Input Premium ---
 interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'prefix'> {
   label?: string;
   error?: string;
   prefix?: React.ReactNode;
 }
+
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, error, prefix, className = '', ...props }, ref) => (
   <div className="w-full">
-    {label && <label className="block text-xs font-semibold text-gray-500 mb-1">{label}</label>}
-    <div className="relative">
+    {label && <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">{label}</label>}
+    <div className="relative group">
       {prefix && (
-        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors">
           {prefix}
         </div>
       )}
       <input
         ref={ref}
-        className={`w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all ${prefix ? 'pl-9' : ''} ${error ? 'border-red-300' : ''} ${className}`}
+        className={`w-full px-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl text-sm font-medium placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all ${prefix ? 'pl-11' : ''} ${error ? 'border-red-300 bg-red-50 focus:ring-red-100' : ''} ${className}`}
         {...props}
       />
     </div>
-    {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+    {error && <p className="mt-1.5 ml-1 text-xs text-red-500 font-medium">{error}</p>}
   </div>
-));
-
-// --- Currency Input (Khusus Angka Ribuan) ---
-interface CurrencyInputProps extends Omit<InputProps, 'onChange' | 'value'> {
-  value: number;
-  onChange: (val: number) => void;
-}
-export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onChange, label, ...props }) => {
-  const [displayValue, setDisplayValue] = useState('');
-
-  // Sinkronisasi display saat value dari luar berubah
-  useEffect(() => {
-    const formatted = value ? value.toLocaleString('id-ID') : '';
-    setDisplayValue(formatted);
-  }, [value]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawValue = e.target.value.replace(/\./g, ''); // Hapus semua titik
-    if (rawValue === '' || /^\d+$/.test(rawValue)) {
-      const numValue = rawValue === '' ? 0 : parseInt(rawValue);
-      setDisplayValue(numValue ? numValue.toLocaleString('id-ID') : '');
-      onChange(numValue);
-    }
-  };
-
-  return (
-    <Input
-      {...props}
-      label={label}
-      prefix="Rp"
-      value={displayValue}
-      onChange={handleChange}
-      inputMode="numeric"
-      placeholder="0"
-    />
-  );
-};
+);
 
 // --- Modal ---
 export const Modal: React.FC<{
@@ -113,49 +141,74 @@ export const Modal: React.FC<{
 }> = ({ isOpen, onClose, title, children, footer }) => {
   if (!isOpen) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-        <div className="px-6 py-4 border-b border-gray-100 flex justify-between items-center">
-          <h3 className="font-bold text-lg text-gray-800">{title}</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
-            <i className="fa-solid fa-xmark text-xl"></i>
-          </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose}></div>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg relative animate-in zoom-in-95 duration-200">
+        <div className="p-5 border-b flex justify-between items-center">
+          <h3 className="font-bold text-lg text-slate-800">{title}</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><i className="fa-solid fa-xmark text-xl"></i></button>
         </div>
-        <div className="p-6 max-h-[75vh] overflow-y-auto no-scrollbar">
+        <div className="p-6 max-h-[70vh] overflow-y-auto no-scrollbar">
           {children}
         </div>
-        {footer && (
-          <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex justify-end gap-3">
-            {footer}
-          </div>
-        )}
+        {footer && <div className="p-4 border-t bg-slate-50 rounded-b-2xl flex justify-end gap-2">{footer}</div>}
       </div>
     </div>
   );
 };
 
-// --- Badge ---
-export const Badge: React.FC<{ children: React.ReactNode; color?: 'blue' | 'green' | 'red' | 'yellow' }> = ({ children, color = 'blue' }) => {
+// --- Currency Input ---
+export const CurrencyInput: React.FC<{
+  label?: string;
+  value: number;
+  onChange: (val: number) => void;
+  className?: string;
+  autoFocus?: boolean;
+}> = ({ label, value, onChange, className = '', autoFocus }) => (
+  <div className="w-full">
+    {label && <label className="block text-xs font-semibold text-slate-500 mb-1 uppercase ml-1">{label}</label>}
+    <div className="relative group">
+      <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-brand-500 transition-colors font-bold text-sm">
+        Rp
+      </div>
+      <input
+        type="number"
+        autoFocus={autoFocus}
+        className={`w-full pl-11 pr-4 py-3 bg-slate-50/50 border border-slate-200 rounded-xl text-sm font-bold focus:outline-none focus:bg-white focus:border-brand-500 focus:ring-4 focus:ring-brand-500/10 transition-all ${className}`}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+    </div>
+  </div>
+);
+
+// --- Badge Premium ---
+export const Badge: React.FC<{ children: React.ReactNode; color?: 'brand' | 'green' | 'red' | 'yellow' | 'slate' | 'blue' }> = ({ children, color = 'brand' }) => {
   const colors = {
-    blue: 'bg-blue-100 text-blue-700',
-    green: 'bg-green-100 text-green-700',
-    red: 'bg-red-100 text-red-700',
-    yellow: 'bg-amber-100 text-amber-700'
+    brand: 'bg-brand-50 text-brand-700 border-brand-100',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-100',
+    red: 'bg-red-50 text-red-700 border-red-100',
+    yellow: 'bg-amber-50 text-amber-700 border-amber-100',
+    slate: 'bg-slate-50 text-slate-700 border-slate-100',
+    blue: 'bg-blue-50 text-blue-700 border-blue-100'
   };
-  return <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${colors[color]}`}>{children}</span>;
+  return (
+    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${colors[color]}`}>
+      {children}
+    </span>
+  );
 };
 
-// --- Toast ---
+// --- Toast Premium ---
 export const Toast: React.FC<{
   message: string;
   type?: 'success' | 'error' | 'warning' | 'info';
   isOpen: boolean;
   onClose: () => void;
-  action?: { label: string; onClick: () => void };
-}> = ({ message, type = 'info', isOpen, onClose, action }) => {
-  useEffect(() => {
+}> = ({ message, type = 'info', isOpen, onClose }) => {
+  React.useEffect(() => {
     if (isOpen) {
-      const timer = setTimeout(onClose, 5000); 
+      const timer = setTimeout(onClose, 4000); 
       return () => clearTimeout(timer);
     }
   }, [isOpen, onClose]);
@@ -163,64 +216,26 @@ export const Toast: React.FC<{
   if (!isOpen) return null;
 
   const styles = {
-    success: 'bg-green-50 border-green-200 text-green-800',
-    error: 'bg-red-50 border-red-200 text-red-800',
-    warning: 'bg-amber-50 border-amber-200 text-amber-800',
-    info: 'bg-blue-50 border-blue-200 text-blue-800'
+    success: 'bg-slate-900 text-white',
+    error: 'bg-red-600 text-white',
+    warning: 'bg-amber-500 text-white',
+    info: 'bg-brand-600 text-white'
   };
 
   const icons = {
-    success: 'fa-circle-check',
-    error: 'fa-circle-xmark',
+    success: 'fa-check-circle text-emerald-400',
+    error: 'fa-exclamation-circle',
     warning: 'fa-triangle-exclamation',
     info: 'fa-circle-info'
   };
 
   return (
-    <div className={`fixed top-4 right-4 z-50 flex items-start gap-3 p-4 rounded-xl border shadow-lg max-w-sm w-full animate-in slide-in-from-right duration-300 ${styles[type]}`}>
-      <div className="mt-0.5 text-lg">
-        <i className={`fa-solid ${icons[type]}`}></i>
-      </div>
-      <div className="flex-1">
-        <p className="text-sm font-medium">{message}</p>
-        {action && (
-          <button 
-            onClick={action.onClick}
-            className="mt-2 text-xs font-bold hover:underline focus:outline-none"
-          >
-            {action.label}
-          </button>
-        )}
-      </div>
-      <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+    <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-5 duration-300 ${styles[type]}`}>
+      <i className={`fa-solid ${icons[type]} text-lg`}></i>
+      <p className="text-sm font-semibold">{message}</p>
+      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity">
         <i className="fa-solid fa-xmark"></i>
       </button>
-    </div>
-  );
-};
-
-// --- Offline Indicator Component ---
-export const OfflineIndicator: React.FC = () => {
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, []);
-
-  if (!isOffline) return null;
-
-  return (
-    <div className="fixed bottom-0 left-0 right-0 bg-gray-800 text-white text-xs py-1 px-3 text-center z-50 animate-pulse">
-      <i className="fa-solid fa-wifi-slash mr-2"></i> Mode Offline - Data tersimpan di perangkat
     </div>
   );
 };

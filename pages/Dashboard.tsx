@@ -1,181 +1,174 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { db } from "../services/db";
-import { Transaction, Product, UserProfile } from "../types";
-import { Card, Toast, Badge, Button } from "../components/UI";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
+import { Transaction, Product, UserProfile, Procurement } from "../types";
+import { Card, Badge, Button, StatCard } from "../components/UI";
+import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const Dashboard: React.FC = () => {
   const [stats, setStats] = useState({
-    todaySales: 0,
-    monthSales: 0,
-    totalTransactions: 0,
-    lowStockCount: 0,
-    todayMethods: { cash: 0, qris: 0, debt: 0 },
+    todaySalesCount: 0,
+    todayProductsSold: 0,
+    todayStockIn: 0,
+    todayRevenue: 0,
   });
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [showLowStockToast, setShowLowStockToast] = useState(false);
-  const [profile, setProfile] = useState<UserProfile | null>(db.getUserProfile());
+  const [topProductsData, setTopProductsData] = useState<any[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
 
   useEffect(() => {
     refreshData();
-    const handleProfile = () => setProfile(db.getUserProfile());
-    window.addEventListener("profile-updated", handleProfile);
-    window.addEventListener("transactions-updated", refreshData);
+    const handleUpdate = () => refreshData();
+    window.addEventListener("transactions-updated", handleUpdate);
+    window.addEventListener("products-updated", handleUpdate);
+    window.addEventListener("procurements-updated", handleUpdate);
     return () => {
-      window.removeEventListener("profile-updated", handleProfile);
-      window.removeEventListener("transactions-updated", refreshData);
+      window.removeEventListener("transactions-updated", handleUpdate);
+      window.removeEventListener("products-updated", handleUpdate);
+      window.removeEventListener("procurements-updated", handleUpdate);
     };
   }, []);
 
   const refreshData = () => {
     const transactions = db.getTransactions();
-    const products = db.getProducts();
+    const prods = db.getProducts();
+    const procurements = db.getProcurements();
+    setProducts(prods);
+
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
+    // 1. Filter data hari ini
     const todayTx = transactions.filter((t) => t.timestamp >= startOfDay);
-    const monthTx = transactions.filter((t) => t.timestamp >= startOfMonth);
+    const todayProc = procurements.filter((p) => p.timestamp >= startOfDay);
 
-    const lowStock = products.filter((p) => p.stock <= p.minStockAlert).length;
-    if (lowStock > 0) setShowLowStockToast(true);
+    // 2. Hitung Metrik
+    const salesCount = todayTx.length;
+    const revenue = todayTx.reduce((sum, t) => sum + t.totalAmount, 0);
 
-    const todayMethods = {
-      cash: todayTx.filter((t) => t.paymentMethod === "cash").reduce((sum, t) => sum + t.totalAmount, 0),
-      qris: todayTx.filter((t) => t.paymentMethod === "qris").reduce((sum, t) => sum + t.totalAmount, 0),
-      debt: todayTx.filter((t) => t.paymentMethod === "debt").reduce((sum, t) => sum + t.totalAmount, 0),
-    };
+    // Uniq products sold today
+    const productsSoldSet = new Set();
+    todayTx.forEach((t) => t.items.forEach((item) => productsSoldSet.add(item.productId)));
+    const uniqueProductsSold = productsSoldSet.size;
 
-    const last7Days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
-      const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-      const dayEnd = dayStart + 86400000;
-      const daySales = transactions.filter((t) => t.timestamp >= dayStart && t.timestamp < dayEnd).reduce((sum, t) => sum + t.totalAmount, 0);
+    // Total stock entered today via Procurement
+    const stockIn = todayProc.reduce((sum, p) => {
+      return sum + p.items.reduce((s, i) => s + i.quantity, 0);
+    }, 0);
 
-      last7Days.push({
-        name: d.toLocaleDateString("id-ID", { weekday: "short" }),
-        sales: daySales,
+    // 3. Data untuk Pie Chart (Top 5 Produk Terlaris Hari Ini)
+    const productMap = new Map<string, { name: string; value: number }>();
+    todayTx.forEach((t) => {
+      t.items.forEach((item) => {
+        const existing = productMap.get(item.productName) || { name: item.productName, value: 0 };
+        productMap.set(item.productName, {
+          name: item.productName,
+          value: existing.value + item.quantity,
+        });
       });
-    }
+    });
+
+    const topProducts = Array.from(productMap.values())
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
 
     setStats({
-      todaySales: todayTx.reduce((sum, t) => sum + t.totalAmount, 0),
-      monthSales: monthTx.reduce((sum, t) => sum + t.totalAmount, 0),
-      totalTransactions: transactions.length,
-      lowStockCount: lowStock,
-      todayMethods,
+      todaySalesCount: salesCount,
+      todayProductsSold: uniqueProductsSold,
+      todayStockIn: stockIn,
+      todayRevenue: revenue,
     });
-    setChartData(last7Days);
+    setTopProductsData(topProducts);
   };
 
-  const handleFixRole = () => {
-    if (profile) {
-      const newProfile = { ...profile, role: "owner" as const };
-      db.saveUserProfile(newProfile);
-      alert("Role dipaksa menjadi OWNER. Halaman akan dimuat ulang.");
-      window.location.reload();
-    }
-  };
-
-  const formatRp = (n: number) => new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(n);
+  const COLORS = ["#ef4444", "#10b981", "#3b82f6", "#f59e0b", "#8b5cf6"];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800">Dashboard Toko</h1>
-          <p className="text-slate-500">Ringkasan aktivitas hari ini</p>
-        </div>
-        <div className="flex items-center gap-3">
-          {profile?.role === "staff" && (
-            <Button variant="outline" size="sm" onClick={handleFixRole} className="text-red-500 border-red-200">
-              Fix Role to Owner
-            </Button>
-          )}
-          <div className="text-sm text-slate-500 bg-white px-3 py-1 rounded-full shadow-sm border border-gray-100">
-            <i className="fa-regular fa-calendar mr-2"></i>
-            {new Date().toLocaleDateString("id-ID", { dateStyle: "full" })}
-          </div>
-        </div>
+    <div className="space-y-8 animate-in fade-in duration-500 pb-10">
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight">Dashboard Overview</h1>
+        <Button variant="outline" size="sm" onClick={refreshData} icon="fa-solid fa-sync">
+          Refresh Data
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title="Omzet Hari Ini" value={formatRp(stats.todaySales)} icon="fa-coins" color="bg-emerald-500" />
-        <StatsCard title="Omzet Bulan Ini" value={formatRp(stats.monthSales)} icon="fa-chart-line" color="bg-blue-500" />
-        <StatsCard title="Total Transaksi" value={stats.totalTransactions.toString()} icon="fa-receipt" color="bg-indigo-500" />
-        <StatsCard
-          title={stats.lowStockCount > 0 ? "Stok Menipis" : "Stok Aman"}
-          value={stats.lowStockCount > 0 ? stats.lowStockCount.toString() : "Aman"}
-          icon={stats.lowStockCount > 0 ? "fa-triangle-exclamation" : "fa-circle-check"}
-          color={stats.lowStockCount > 0 ? "bg-red-500" : "bg-emerald-500"}
-        />
+      {/* Row 1: Vibrant Stat Cards (Admin Style) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <StatCard title="Transaksi Hari Ini" value={stats.todaySalesCount} icon="fa-solid fa-shopping-cart" color="cyan" onClick={() => (window.location.hash = "#/reports")} />
+        <StatCard title="Produk Terjual Hari Ini" value={stats.todayProductsSold} icon="fa-solid fa-tags" color="amber" onClick={() => (window.location.hash = "#/pos")} />
+        <StatCard title="Stok Masuk Hari Ini" value={stats.todayStockIn} icon="fa-solid fa-box" color="crimson" onClick={() => (window.location.hash = "#/procurements")} />
+        <StatCard title="Omzet Hari Ini" value={`Rp ${stats.todayRevenue.toLocaleString("id-ID", { notation: "compact" })}`} icon="fa-solid fa-wallet" color="emerald" onClick={() => (window.location.hash = "#/reports")} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card className="lg:col-span-2 p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="font-bold text-lg">Grafik Penjualan 7 Hari</h3>
-            <div className="flex gap-2">
-              <Badge color="blue">Tunai: {formatRp(stats.todayMethods.cash)}</Badge>
-              <Badge color="green">QRIS: {formatRp(stats.todayMethods.qris)}</Badge>
-              <Badge color="red">Hutang: {formatRp(stats.todayMethods.debt)}</Badge>
-            </div>
-          </div>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: "#94a3b8" }} dy={10} />
-                <YAxis hide />
-                <Tooltip cursor={{ fill: "#f1f5f9" }} contentStyle={{ borderRadius: "8px", border: "none" }} />
-                <Bar dataKey="sales" radius={[4, 4, 0, 0]}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={index === 6 ? "#3b82f6" : "#cbd5e1"} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+      {/* Row 2: Charts & Product List (Persis Gambar) */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Pie Chart Produk Terlaris */}
+        <Card variant="blue-header" className="min-h-[400px]">
+          <h3 className="font-bold text-slate-800 uppercase text-xs tracking-widest mb-6">Produk Terlaris (Hari Ini)</h3>
+          <div className="h-[300px] w-full">
+            {topProductsData.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={topProductsData} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                    {topProductsData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip contentStyle={{ borderRadius: "12px", border: "none", boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)" }} />
+                  <Legend verticalAlign="bottom" height={36} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 italic text-sm">
+                <i className="fa-solid fa-chart-pie text-4xl mb-3 opacity-20"></i>
+                Belum ada penjualan hari ini
+              </div>
+            )}
           </div>
         </Card>
 
-        <Card className="p-6">
-          <h3 className="font-bold text-lg mb-4">Metode Pembayaran (Hari Ini)</h3>
-          <div className="space-y-4">
-            <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl flex justify-between items-center">
-              <span className="text-sm font-bold text-blue-700">Tunai</span>
-              <span className="font-black text-blue-900">{formatRp(stats.todayMethods.cash)}</span>
-            </div>
-            <div className="p-3 bg-emerald-50 border border-emerald-100 rounded-xl flex justify-between items-center">
-              <span className="text-sm font-bold text-emerald-700">QRIS</span>
-              <span className="font-black text-emerald-900">{formatRp(stats.todayMethods.qris)}</span>
-            </div>
-            <div className="p-3 bg-red-50 border border-red-100 rounded-xl flex justify-between items-center">
-              <span className="text-sm font-bold text-red-700">Hutang</span>
-              <span className="font-black text-red-900">{formatRp(stats.todayMethods.debt)}</span>
-            </div>
+        {/* List Stok Produk */}
+        <Card variant="amber-header">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="font-bold text-slate-800 uppercase text-xs tracking-widest">Status Stok Produk</h3>
+            {/* FIX: Changed color from 'amber' to 'yellow' to match allowed Badge colors in components/UI.tsx */}
+            <Badge color="yellow">Data Real-time</Badge>
           </div>
-          <button onClick={() => (window.location.hash = "#reports")} className="w-full mt-6 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold hover:bg-slate-200 transition-colors">
-            LIHAT DETAIL LAPORAN
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-slate-400 border-b border-slate-100 uppercase text-[10px] tracking-widest">
+                  <th className="pb-3 font-bold">Nama Barang</th>
+                  <th className="pb-3 font-bold text-right">Sisa Stok</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {products
+                  .sort((a, b) => a.stock - b.stock)
+                  .slice(0, 8)
+                  .map((p, i) => (
+                    <tr key={i} className="group hover:bg-slate-50 transition-colors">
+                      <td className="py-3 font-bold text-slate-700">{p.name}</td>
+                      <td className={`py-3 text-right font-black ${p.stock <= p.minStockAlert ? "text-red-500" : "text-slate-900"}`}>
+                        {p.stock} <span className="text-[10px] font-normal text-slate-400 uppercase ml-1">{p.baseUnit}</span>
+                      </td>
+                    </tr>
+                  ))}
+                {products.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="py-10 text-center text-slate-400 italic">
+                      Data produk kosong
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <button onClick={() => (window.location.hash = "#/products")} className="w-full mt-4 py-2 bg-slate-100 rounded-lg text-[10px] font-black uppercase text-slate-500 hover:bg-brand-600 hover:text-white transition-all tracking-widest">
+            Lihat Stok Lengkap <i className="fa-solid fa-arrow-right ml-1"></i>
           </button>
         </Card>
       </div>
-
-      <Toast isOpen={showLowStockToast} onClose={() => setShowLowStockToast(false)} type="warning" message={`Perhatian: Ada ${stats.lowStockCount} produk dengan stok menipis!`} />
     </div>
   );
 };
-
-const StatsCard = ({ title, value, icon, color }: { title: string; value: string; icon: string; color: string }) => (
-  <Card className={`p-5 flex items-center gap-4 relative overflow-hidden transition-all duration-300`}>
-    <div className={`w-12 h-12 rounded-lg ${color} bg-opacity-10 flex items-center justify-center text-xl shrink-0 ${color.replace("bg-", "text-")}`}>
-      <i className={`fa-solid ${icon}`}></i>
-    </div>
-    <div>
-      <p className="text-sm font-medium text-slate-500">{title}</p>
-      <p className="text-xl font-bold text-slate-800">{value}</p>
-    </div>
-  </Card>
-);
 
 export default Dashboard;
