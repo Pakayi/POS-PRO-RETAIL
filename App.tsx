@@ -20,30 +20,32 @@ import DebtBook from "./pages/DebtBook";
 import Rewards from "./pages/Rewards";
 
 const NAV_ITEMS = [
-  { path: "/", label: "Dashboard", icon: "fa-solid fa-house", roles: ["owner", "staff"] },
-  { path: "/pos", label: "Kasir", icon: "fa-solid fa-calculator", roles: ["owner", "staff"] },
-  { path: "/products", label: "Stok Barang", icon: "fa-solid fa-boxes-stacked", roles: ["owner"] },
-  { path: "/procurement", label: "Stok Masuk", icon: "fa-solid fa-truck-loading", roles: ["owner"] },
-  { path: "/customers", label: "Pelanggan", icon: "fa-solid fa-address-book", roles: ["owner", "staff"] },
-  { path: "/debt-book", label: "Buku Hutang", icon: "fa-solid fa-file-invoice-dollar", roles: ["owner", "staff"] },
-  { path: "/rewards", label: "Reward Member", icon: "fa-solid fa-gift", roles: ["owner", "staff"] },
-  { path: "/suppliers", label: "Supplier", icon: "fa-solid fa-building", roles: ["owner"] },
-  { path: "/reports", label: "Laporan", icon: "fa-solid fa-chart-line", roles: ["owner"] },
-  { path: "/settings", label: "Pengaturan", icon: "fa-solid fa-sliders", roles: ["owner"] },
+  { path: "/", label: "Dashboard", icon: "fa-solid fa-gauge-high", roles: ["owner", "staff"] },
+  { path: "/suppliers", label: "Supplier", icon: "fa-solid fa-truck-field", roles: ["owner"] },
+  { path: "/customers", label: "Pelanggan", icon: "fa-solid fa-users", roles: ["owner", "staff"] },
+  { path: "/products", label: "Produk", icon: "fa-solid fa-box", roles: ["owner"], subItems: true },
+  { path: "/procurement", label: "Stok", icon: "fa-solid fa-warehouse", roles: ["owner"], subItems: true },
+  { path: "/pos", label: "Transaksi", icon: "fa-solid fa-cart-shopping", roles: ["owner", "staff"] },
+  { path: "/reports", label: "Laporan", icon: "fa-solid fa-file-invoice", roles: ["owner"], subItems: true },
 ];
 
-const SidebarItem = ({ path, label, icon, isCollapsed, isMobile }: any) => (
+const SidebarItem = ({ path, label, icon, isCollapsed, isMobile, subItems }: any) => (
   <NavLink
     to={path}
     className={({ isActive }) => `
-      flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 mb-1
-      ${isActive ? "bg-brand-600 text-white shadow-lg" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}
+      sidebar-link flex items-center gap-3 px-4 py-3 transition-all duration-200 border-b border-black/10
+      ${isActive ? "active" : "text-slate-300 hover:bg-black/20 hover:text-white"}
     `}
   >
-    <div className="w-5 text-center">
+    <div className="w-5 text-center text-sm">
       <i className={icon}></i>
     </div>
-    {(!isCollapsed || isMobile) && <span className="font-bold text-xs uppercase tracking-wider">{label}</span>}
+    {(!isCollapsed || isMobile) && (
+      <div className="flex-1 flex justify-between items-center">
+        <span className="text-sm font-medium">{label}</span>
+        {subItems && <i className="fa-solid fa-chevron-left text-[10px] opacity-50"></i>}
+      </div>
+    )}
   </NavLink>
 );
 
@@ -59,7 +61,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center bg-[#f4f6f9]">Loading...</div>;
 
   return (
     <HashRouter>
@@ -95,31 +97,54 @@ const Layout: React.FC<{ user: any }> = ({ user }) => {
   const allowedNav = NAV_ITEMS.filter((item) => item.roles.includes(profile?.role || "staff"));
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
+    <div className="flex h-screen bg-[#f4f6f9] overflow-hidden">
       <OfflineIndicator />
-      <aside className={`bg-white border-r border-slate-200 transition-all duration-300 flex flex-col ${isSidebarOpen ? "w-64" : "w-20"}`}>
-        <div className="p-6 font-black text-xl text-brand-600">WARUNGPRO</div>
-        <nav className="flex-1 px-4 overflow-y-auto">
+
+      {/* Dark Sidebar */}
+      <aside className={`bg-dashboard-sidebar transition-all duration-300 flex flex-col z-40 ${isSidebarOpen ? "w-64" : "w-16"}`}>
+        <div className="h-16 flex items-center px-4 border-b border-black/20 text-white font-bold tracking-tight">{isSidebarOpen ? "Toko Tum" : "TT"}</div>
+
+        {/* User Profile Mini */}
+        {isSidebarOpen && (
+          <div className="p-4 flex items-center gap-3 border-b border-black/10">
+            <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs text-white">
+              <i className="fa-solid fa-user"></i>
+            </div>
+            <span className="text-slate-300 text-xs font-medium truncate">{profile?.displayName || "Admin"}</span>
+          </div>
+        )}
+
+        <nav className="flex-1 overflow-y-auto no-scrollbar">
           {allowedNav.map((item) => (
             <SidebarItem key={item.path} {...item} isCollapsed={!isSidebarOpen} isMobile={isMobile} />
           ))}
         </nav>
-        <div className="p-4 border-t">
-          <button onClick={handleLogout} className="w-full py-2 text-xs font-bold text-red-500 hover:bg-red-50 rounded-lg">
-            LOGOUT
+
+        <div className="p-2 border-t border-black/20">
+          <button onClick={handleLogout} className="w-full py-2 text-xs font-bold text-red-400 hover:bg-black/20 rounded-lg">
+            {isSidebarOpen ? "SIGN OUT" : <i className="fa-solid fa-right-from-bracket"></i>}
           </button>
         </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center px-6 justify-between">
-          <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 bg-slate-100 rounded-lg">
-            <i className="fa-solid fa-bars"></i>
-          </button>
-          <h1 className="font-bold text-slate-800">{NAV_ITEMS.find((i) => i.path === location.pathname)?.label}</h1>
-          <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-700 font-bold uppercase">{profile?.displayName?.charAt(0)}</div>
+        {/* White Navbar */}
+        <header className="h-14 bg-white border-b border-slate-200 flex items-center px-4 justify-between shrink-0">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="p-2 text-slate-500 hover:text-slate-900 transition-colors">
+              <i className="fa-solid fa-bars"></i>
+            </button>
+            <h1 className="font-bold text-slate-800 hidden sm:block">{NAV_ITEMS.find((i) => i.path === location.pathname)?.label || "Dashboard"}</h1>
+          </div>
+          <div className="flex items-center gap-4">
+            <button className="text-slate-400 hover:text-slate-600">
+              <i className="fa-solid fa-user"></i>
+            </button>
+          </div>
         </header>
-        <div className="flex-1 overflow-auto p-6">
+
+        {/* Content Area */}
+        <div className="flex-1 overflow-auto p-4 md:p-6 bg-[#f4f6f9]">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/pos" element={<POS />} />

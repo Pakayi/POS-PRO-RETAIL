@@ -3,72 +3,110 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
-    <meta name="theme-color" content="#0f172a" />
-    <title>Warung POS Pro</title>
-    <meta name="description" content="Aplikasi Kasir Warung Modern Offline" />
+    <meta name="theme-color" content="#343a40" />
+    <title>Warung POS Pro | Smart Retail Solution</title>
+    <meta name="description" content="Aplikasi Kasir Warung Modern Offline & PWA" />
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="./manifest.json" />
     <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2897/2897821.png" />
 
+    <!-- Plus Jakarta Sans Font -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Plus Jakarta Sans", "sans-serif"],
+            },
+            colors: {
+              brand: {
+                50: "#f5f3ff",
+                100: "#ede9fe",
+                200: "#ddd6fe",
+                300: "#c4b5fd",
+                400: "#a78bfa",
+                500: "#007bff",
+                600: "#0069d9",
+                700: "#005cbf",
+                800: "#004a99",
+                900: "#003366",
+              },
+              dashboard: {
+                dark: "#343a40",
+                sidebar: "#343a40",
+                active: "#007bff",
+                info: "#17a2b8",
+                warning: "#ffc107",
+                danger: "#dc3545",
+                success: "#28a745",
+              },
+            },
+          },
+        },
+      };
+    </script>
+
     <style>
       ::-webkit-scrollbar {
-        width: 6px;
-        height: 6px;
+        width: 5px;
+        height: 5px;
       }
       ::-webkit-scrollbar-track {
         background: transparent;
       }
       ::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 3px;
+        background: #ced4da;
+        border-radius: 10px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: #94a3b8;
+        background: #adb5bd;
       }
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
+
+      body {
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+        background-color: #f4f6f9;
       }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+
+      .sidebar-link.active {
+        background-color: #007bff !important;
+        color: white !important;
       }
+
       @media print {
         .no-print {
           display: none !important;
         }
-        body {
-          background: white;
-        }
-        #root {
-          display: none;
-        }
       }
     </style>
+
     <script type="importmap">
       {
         "imports": {
           "react": "https://esm.sh/react@19.0.0",
+          "react/": "https://esm.sh/react@19.0.0/",
           "react-dom": "https://esm.sh/react-dom@19.0.0",
           "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-          "react-router-dom": "https://esm.sh/react-router-dom@7.1.3",
-          "recharts": "https://esm.sh/recharts@2.15.0",
+          "react-router-dom": "https://esm.sh/react-router-dom@7.1.3?external=react,react-dom",
+          "recharts": "https://esm.sh/recharts@2.15.0?external=react,react-dom",
           "jspdf": "https://esm.sh/jspdf@2.5.1",
           "xlsx": "https://esm.sh/xlsx@0.18.5",
           "html5-qrcode": "https://esm.sh/html5-qrcode@2.3.8",
-          "firebase/app": "https://esm.sh/firebase@11.1.0/app",
-          "firebase/auth": "https://esm.sh/firebase@11.1.0/auth",
-          "firebase/firestore": "https://esm.sh/firebase@11.1.0/firestore",
           "@google/genai": "https://esm.sh/@google/genai@0.21.0",
-          "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-          "react/": "https://esm.sh/react@^19.2.3/"
+          "react-dom/": "https://esm.sh/react-dom@^19.2.4/"
         }
       }
     </script>
   </head>
-  <body class="bg-gray-50 text-slate-900 antialiased select-none overscroll-none">
+  <body class="text-slate-900 antialiased selection:bg-blue-100 overflow-hidden">
     <div id="root"></div>
     <iframe id="printFrame" style="display: none"></iframe>
     <script type="module" src="./index.tsx"></script>
