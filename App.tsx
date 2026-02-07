@@ -1,51 +1,44 @@
 import React, { useState, useEffect } from "react";
 import { HashRouter, Routes, Route, NavLink, useLocation, Navigate } from "react-router-dom";
+// FIX: Using CDN URL for firebase/auth to ensure exports like onAuthStateChanged and signOut are available
+import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+import { auth } from "./services/firebase";
+import { db } from "./services/db";
+import { OfflineIndicator, Badge } from "./components/UI";
+import { UserProfile } from "./types";
+
+// Pages
 import Dashboard from "./pages/Dashboard";
 import POS from "./pages/POS";
 import Products from "./pages/Products";
 import Customers from "./pages/Customers";
 import Settings from "./pages/Settings";
-import Reports from "./pages/Reports";
-import Suppliers from "./pages/Suppliers";
-import Procurement from "./pages/Procurement";
-import DebtBook from "./pages/DebtBook";
-import Loyalty from "./pages/Rewards";
 import Login from "./pages/Login";
-import { PinGuard } from "./components/Security";
-import { db } from "./services/db";
-import { auth } from "./services/firebase";
-// FIX: Using CDN URL for firebase/auth to ensure exports like onAuthStateChanged and signOut are available
-import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
-import { OfflineIndicator, Badge } from "./components/UI";
-import { UserProfile } from "./types";
 
 const NAV_ITEMS = [
-  { path: "/", label: "Dashboard", icon: "fa-gauge-high", roles: ["owner", "staff"] },
-  { path: "/pos", label: "Kasir (POS)", icon: "fa-cash-register", roles: ["owner", "staff"] },
-  { path: "/loyalty", label: "Program Poin", icon: "fa-star", roles: ["owner", "staff"] },
-  { path: "/debt-book", label: "Buku Hutang", icon: "fa-book", roles: ["owner", "staff"] },
-  { path: "/procurement", label: "Stok Masuk", icon: "fa-truck-loading", roles: ["owner"] },
-  { path: "/products", label: "Produk", icon: "fa-box", roles: ["owner"] },
-  { path: "/suppliers", label: "Supplier", icon: "fa-building-user", roles: ["owner"] },
-  { path: "/customers", label: "Pelanggan", icon: "fa-users", roles: ["owner"] },
-  { path: "/reports", label: "Laporan", icon: "fa-chart-pie", roles: ["owner"] },
-  { path: "/settings", label: "Pengaturan", icon: "fa-gear", roles: ["owner"] },
+  { path: "/", label: "Dashboard", icon: "fa-solid fa-house", roles: ["owner", "staff"] },
+  { path: "/pos", label: "Kasir", icon: "fa-solid fa-calculator", roles: ["owner", "staff"] },
+  { path: "/products", label: "Stok Barang", icon: "fa-solid fa-boxes-stacked", roles: ["owner"] },
+  { path: "/customers", label: "Pelanggan", icon: "fa-solid fa-address-book", roles: ["owner", "staff"] },
+  { path: "/settings", label: "Pengaturan", icon: "fa-solid fa-sliders", roles: ["owner"] },
 ];
 
-const SidebarItem = ({ path, label, icon, isCollapsed }: any) => (
+const SidebarItem = ({ path, label, icon, isCollapsed, isMobile }: any) => (
   <NavLink
     to={path}
-    className={({ isActive }) => `flex items-center gap-3 px-3 py-3 rounded-lg transition-colors mb-1 ${isActive ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30" : "text-slate-400 hover:bg-slate-800 hover:text-white"}`}
+    className={({ isActive }) => `
+      flex items-center gap-3 px-4 py-3.5 rounded-xl transition-all duration-200 mb-1 group
+      ${isActive ? "bg-brand-600 text-white shadow-lg shadow-brand-200" : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"}
+    `}
   >
-    <div className="w-6 text-center">
-      <i className={`fa-solid ${icon}`}></i>
+    <div className={`w-5 text-center text-lg ${!isCollapsed || isMobile ? "" : "mx-auto"}`}>
+      <i className={`${icon}`}></i>
     </div>
-    {!isCollapsed && <span className="font-medium text-sm">{label}</span>}
+    {(!isCollapsed || isMobile) && <span className="font-bold text-sm tracking-tight">{label}</span>}
   </NavLink>
 );
 
 const App: React.FC = () => {
-  // FIX: Using any type for user to accommodate CDN module limitations
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -59,10 +52,10 @@ const App: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-900">
+      <div className="min-h-screen flex items-center justify-center bg-[#F8FAFC]">
         <div className="text-center">
-          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-white font-medium animate-pulse">Memuat Warung POS Pro...</p>
+          <div className="w-12 h-12 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-slate-500 font-bold text-sm animate-pulse tracking-widest uppercase">Initializing...</p>
         </div>
       </div>
     );
@@ -85,151 +78,122 @@ const App: React.FC = () => {
 const Layout: React.FC<{ user: any }> = ({ user }) => {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
-  const [appSettings, setAppSettings] = useState(db.getSettings());
   const [profile, setProfile] = useState<UserProfile | null>(db.getUserProfile());
   const location = useLocation();
 
   useEffect(() => {
-    const handleResize = () => setIsMobile(window.innerWidth < 1024);
-    const handleSettingsUpdate = () => setAppSettings(db.getSettings());
-    const handleProfileUpdate = () => setProfile(db.getUserProfile());
+    const handleResize = () => {
+      const mobile = window.innerWidth < 1024;
+      setIsMobile(mobile);
+      if (mobile) setSidebarOpen(false);
+      else setSidebarOpen(true);
+    };
 
     window.addEventListener("resize", handleResize);
-    window.addEventListener("settings-updated", handleSettingsUpdate);
-    window.addEventListener("profile-updated", handleProfileUpdate);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("settings-updated", handleSettingsUpdate);
-      window.removeEventListener("profile-updated", handleProfileUpdate);
-    };
+    handleResize();
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  useEffect(() => {
-    if (isMobile) setSidebarOpen(false);
-  }, [location, isMobile]);
-
   const handleLogout = () => {
-    if (confirm("Keluar dari aplikasi?")) {
-      signOut(auth);
-    }
+    if (confirm("Keluar dari sistem?")) signOut(auth);
   };
 
   const allowedNav = NAV_ITEMS.filter((item) => item.roles.includes(profile?.role || "staff"));
 
   return (
-    <div className="flex h-screen bg-slate-100 overflow-hidden">
+    <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
       <OfflineIndicator />
 
-      {isMobile && isSidebarOpen && <div className="fixed inset-0 bg-black/50 z-20" onClick={() => setSidebarOpen(false)} />}
+      {/* Mobile Overlay */}
+      {isMobile && isSidebarOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity" onClick={() => setSidebarOpen(false)} />}
 
-      <aside className={`fixed lg:static inset-y-0 left-0 z-30 bg-slate-900 text-white transition-all duration-300 ease-in-out flex flex-col ${isSidebarOpen ? "w-64 translate-x-0" : isMobile ? "-translate-x-full w-64" : "w-20"}`}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-slate-800 shrink-0">
-          <div className={`flex items-center gap-3 overflow-hidden ${!isSidebarOpen && !isMobile ? "hidden" : ""}`}>
-            <div className="w-9 h-9 bg-white rounded-xl flex items-center justify-center p-1.5 shadow-sm shrink-0">
-              {appSettings.logoUrl ? <img src={appSettings.logoUrl} alt="Logo" className="w-full h-full object-contain" /> : <i className="fa-solid fa-cash-register text-blue-600 text-lg"></i>}
+      {/* Sidebar */}
+      <aside
+        className={`
+          fixed lg:static inset-y-0 left-0 z-50 bg-white border-r border-slate-200 
+          transition-all duration-300 ease-in-out flex flex-col
+          ${isSidebarOpen ? "w-72 translate-x-0" : isMobile ? "-translate-x-full w-72" : "w-24"}
+        `}
+      >
+        <div className="h-20 flex items-center px-6 mb-4 shrink-0">
+          <div className="flex items-center gap-3 overflow-hidden">
+            <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-brand-200 shrink-0">
+              <i className="fa-solid fa-bolt-lightning text-xl"></i>
             </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-sm tracking-tight truncate">{appSettings.storeName || "Warung POS"}</span>
-              <span className="text-[10px] text-blue-400 font-bold uppercase tracking-tighter">{profile?.role || "Staff"}</span>
-            </div>
+            {(isSidebarOpen || isMobile) && (
+              <div className="flex flex-col">
+                <span className="font-extrabold text-slate-900 tracking-tight leading-none text-lg">
+                  WARUNG<span className="text-brand-600">PRO</span>
+                </span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Retail System</span>
+              </div>
+            )}
           </div>
-          {!isMobile && (
-            <button onClick={() => setSidebarOpen(!isSidebarOpen)} className="text-slate-400 hover:text-white p-1 ml-auto">
-              <i className={`fa-solid ${isSidebarOpen ? "fa-chevron-left" : "fa-bars"}`}></i>
-            </button>
-          )}
         </div>
 
-        <nav className="flex-1 p-3 overflow-y-auto">
-          {allowedNav.map((item) => (
-            <SidebarItem key={item.path} {...item} isCollapsed={!isSidebarOpen && !isMobile} />
-          ))}
+        <nav className="flex-1 px-4 overflow-y-auto no-scrollbar">
+          <div className="space-y-1">
+            {allowedNav.map((item) => (
+              <SidebarItem key={item.path} {...item} isCollapsed={!isSidebarOpen} isMobile={isMobile} />
+            ))}
+          </div>
         </nav>
 
-        <div className="p-4 border-t border-slate-800 space-y-2">
-          <div className={`flex items-center gap-3 ${!isSidebarOpen && !isMobile ? "justify-center" : ""}`}>
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-500 to-emerald-500 flex items-center justify-center text-[10px] font-bold">{user.email?.charAt(0).toUpperCase()}</div>
+        <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+          <div className={`flex items-center gap-3 p-3 rounded-2xl bg-white border border-slate-200 shadow-sm ${!isSidebarOpen && !isMobile ? "justify-center" : ""}`}>
+            <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-brand-600 font-bold text-lg border border-slate-200 shrink-0 uppercase">{profile?.displayName?.charAt(0) || user.email?.charAt(0)}</div>
             {(isSidebarOpen || isMobile) && (
               <div className="flex-1 overflow-hidden">
-                <p className="text-sm font-medium truncate">{profile?.displayName || user.displayName || "User"}</p>
-                <p className="text-[10px] text-slate-500 truncate">{user.email}</p>
+                <p className="text-sm font-bold text-slate-900 truncate">{profile?.displayName || "Admin"}</p>
+                <Badge color={profile?.role === "owner" ? "brand" : "green"}>{profile?.role}</Badge>
               </div>
             )}
           </div>
           {(isSidebarOpen || isMobile) && (
-            <button onClick={handleLogout} className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 hover:text-red-300 rounded-lg transition-colors">
-              <i className="fa-solid fa-right-from-bracket"></i>
-              <span>Logout</span>
+            <button onClick={handleLogout} className="w-full mt-3 flex items-center justify-center gap-2 py-2.5 text-xs font-bold text-red-500 hover:bg-red-50 rounded-xl transition-colors">
+              <i className="fa-solid fa-arrow-right-from-bracket"></i>
+              Logout System
             </button>
           )}
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col h-full overflow-hidden relative">
-        <header className="lg:hidden h-16 bg-white border-b border-gray-200 flex items-center px-4 justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 text-gray-600">
-              <i className="fa-solid fa-bars text-xl"></i>
+      {/* Main Content */}
+      <main className="flex-1 flex flex-col h-full overflow-hidden">
+        {/* Header Desktop & Mobile */}
+        <header className="h-20 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center px-6 justify-between shrink-0 z-30">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setSidebarOpen(!isSidebarOpen)}
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-slate-500 hover:bg-white hover:text-brand-600 hover:border-brand-200 transition-all shadow-sm"
+            >
+              <i className={`fa-solid ${isSidebarOpen ? "fa-indent" : "fa-outdent"}`}></i>
             </button>
-            <h1 className="font-bold text-gray-800 truncate max-w-[200px]">{appSettings.storeName || "Warung POS"}</h1>
+            <div className="hidden sm:block">
+              <h1 className="font-extrabold text-slate-900 text-xl tracking-tight">{NAV_ITEMS.find((i) => i.path === location.pathname)?.label || "Warung POS"}</h1>
+            </div>
           </div>
-          <Badge color={profile?.role === "owner" ? "blue" : "green"}>{profile?.role?.toUpperCase()}</Badge>
+
+          <div className="flex items-center gap-3">
+            <div className="hidden md:flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-100 rounded-xl text-emerald-700 font-bold text-xs">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+              System Online
+            </div>
+            <button className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-50 border border-slate-200 text-slate-500 relative">
+              <i className="fa-regular fa-bell"></i>
+              <div className="absolute top-2.5 right-2.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></div>
+            </button>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-auto p-4 lg:p-6 relative">
+        {/* View Content */}
+        <div className="flex-1 overflow-auto p-6 md:p-8 no-scrollbar bg-[#F8FAFC]">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route
-              path="/pos"
-              element={
-                <PinGuard>
-                  <POS />
-                </PinGuard>
-              }
-            />
-            <Route
-              path="/loyalty"
-              element={
-                <PinGuard>
-                  <Loyalty />
-                </PinGuard>
-              }
-            />
-            <Route
-              path="/debt-book"
-              element={
-                <PinGuard>
-                  <DebtBook />
-                </PinGuard>
-              }
-            />
-
-            {profile?.role === "owner" && (
-              <>
-                <Route path="/procurement" element={<Procurement />} />
-                <Route path="/products" element={<Products />} />
-                <Route path="/suppliers" element={<Suppliers />} />
-                <Route path="/customers" element={<Customers />} />
-                <Route
-                  path="/reports"
-                  element={
-                    <PinGuard>
-                      <Reports />
-                    </PinGuard>
-                  }
-                />
-                <Route
-                  path="/settings"
-                  element={
-                    <PinGuard>
-                      <Settings />
-                    </PinGuard>
-                  }
-                />
-              </>
-            )}
-
+            <Route path="/pos" element={<POS />} />
+            <Route path="/products" element={<Products />} />
+            <Route path="/customers" element={<Customers />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>

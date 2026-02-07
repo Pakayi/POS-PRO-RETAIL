@@ -1,8 +1,6 @@
 import React from "react";
 
 // --- Types & Constants ---
-type ThemeColor = "brand" | "green" | "red" | "yellow" | "slate" | "blue" | "cyan" | "amber" | "emerald" | "crimson" | "indigo";
-
 const HEADER_VARIANTS = {
   white: "",
   "blue-header": "border-t-4 border-t-blue-500",
@@ -12,28 +10,6 @@ const HEADER_VARIANTS = {
   "indigo-header": "border-t-4 border-t-brand-600",
 };
 
-// --- Card ---
-interface CardProps {
-  children: React.ReactNode;
-  className?: string;
-  noPadding?: boolean;
-  variant?: keyof typeof HEADER_VARIANTS;
-}
-
-export const Card: React.FC<CardProps> = ({ children, className = "", noPadding = false, variant = "white" }) => (
-  <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden ${HEADER_VARIANTS[variant]} ${noPadding ? "" : "p-5"} ${className}`}>{children}</div>
-);
-Card.displayName = "Card";
-
-// --- Stat Card ---
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  icon: string;
-  color: "cyan" | "amber" | "emerald" | "crimson" | "indigo";
-  onClick?: () => void;
-}
-
 const STAT_COLORS = {
   cyan: "bg-cyan-500",
   amber: "bg-amber-500",
@@ -41,32 +17,6 @@ const STAT_COLORS = {
   crimson: "bg-red-500",
   indigo: "bg-brand-600",
 };
-
-export const StatCard: React.FC<StatCardProps> = ({ title, value, icon, color, onClick }) => (
-  <div className={`${STAT_COLORS[color]} rounded-xl shadow-md overflow-hidden relative group transition-transform active:scale-95 cursor-pointer`} onClick={onClick}>
-    <div className="p-5 text-white">
-      <div className="relative z-10">
-        <h3 className="text-4xl font-black mb-1">{value}</h3>
-        <p className="text-sm font-bold opacity-90 uppercase tracking-tight">{title}</p>
-      </div>
-      <div className="absolute top-4 right-4 text-6xl opacity-20 group-hover:scale-110 transition-transform">
-        <i className={icon}></i>
-      </div>
-    </div>
-    <button className="w-full py-2 bg-black/10 hover:bg-black/20 text-white text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
-      Detail Selengkapnya <i className="fa-solid fa-circle-right"></i>
-    </button>
-  </div>
-);
-StatCard.displayName = "StatCard";
-
-// --- Button ---
-interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "danger" | "ghost" | "outline" | "success";
-  size?: "sm" | "md" | "lg";
-  icon?: string;
-  loading?: boolean;
-}
 
 const BTN_VARIANTS = {
   primary: "bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-100 shadow-md shadow-brand-200",
@@ -83,7 +33,59 @@ const BTN_SIZES = {
   lg: "px-6 py-3.5 text-base gap-2.5",
 };
 
-export const Button: React.FC<ButtonProps> = ({ children, variant = "primary", size = "md", icon, loading, className = "", ...props }) => (
+const BADGE_COLORS = {
+  brand: "bg-brand-50 text-brand-700 border-brand-100",
+  green: "bg-emerald-50 text-emerald-700 border-emerald-100",
+  red: "bg-red-50 text-red-700 border-red-100",
+  yellow: "bg-amber-50 text-amber-700 border-amber-100",
+  slate: "bg-slate-50 text-slate-700 border-slate-100",
+  blue: "bg-blue-50 text-blue-700 border-blue-100",
+};
+
+// --- Components ---
+
+export const Card: React.FC<{
+  children: React.ReactNode;
+  className?: string;
+  noPadding?: boolean;
+  variant?: keyof typeof HEADER_VARIANTS;
+}> = ({ children, className = "", noPadding = false, variant = "white" }) => (
+  <div className={`bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden ${HEADER_VARIANTS[variant]} ${noPadding ? "" : "p-5"} ${className}`}>{children}</div>
+);
+Card.displayName = "Card";
+
+export const StatCard: React.FC<{
+  title: string;
+  value: string | number;
+  icon: string;
+  color: keyof typeof STAT_COLORS;
+  onClick?: () => void;
+}> = ({ title, value, icon, color, onClick }) => (
+  <div className={`${STAT_COLORS[color]} rounded-xl shadow-md overflow-hidden relative group transition-transform active:scale-95 cursor-pointer`} onClick={onClick}>
+    <div className="p-5 text-white">
+      <div className="relative z-10">
+        <h3 className="text-4xl font-black mb-1">{value}</h3>
+        <p className="text-sm font-bold opacity-90 uppercase tracking-tight">{title}</p>
+      </div>
+      <div className="absolute top-4 right-4 text-6xl opacity-20 group-hover:scale-110 transition-transform">
+        <i className={icon}></i>
+      </div>
+    </div>
+    <div className="w-full py-2 bg-black/10 hover:bg-black/20 text-white text-[10px] font-bold uppercase tracking-widest flex items-center justify-center gap-2 transition-colors">
+      Detail Selengkapnya <i className="fa-solid fa-circle-right"></i>
+    </div>
+  </div>
+);
+StatCard.displayName = "StatCard";
+
+export const Button: React.FC<
+  React.ButtonHTMLAttributes<HTMLButtonElement> & {
+    variant?: keyof typeof BTN_VARIANTS;
+    size?: keyof typeof BTN_SIZES;
+    icon?: string;
+    loading?: boolean;
+  }
+> = ({ children, variant = "primary", size = "md", icon, loading, className = "", ...props }) => (
   <button
     className={`inline-flex items-center justify-center font-semibold transition-all duration-200 rounded-xl focus:outline-none focus:ring-4 disabled:opacity-50 active:scale-[0.97] ${BTN_VARIANTS[variant]} ${BTN_SIZES[size]} ${className}`}
     disabled={loading || props.disabled}
@@ -95,14 +97,14 @@ export const Button: React.FC<ButtonProps> = ({ children, variant = "primary", s
 );
 Button.displayName = "Button";
 
-// --- Input (Stable ForwardRef) ---
-interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "prefix"> {
-  label?: string;
-  error?: string;
-  prefix?: React.ReactNode;
-}
-
-export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, error, prefix, className = "", ...props }, ref) => (
+export const Input = React.forwardRef<
+  HTMLInputElement,
+  Omit<React.InputHTMLAttributes<HTMLInputElement>, "prefix"> & {
+    label?: string;
+    error?: string;
+    prefix?: React.ReactNode;
+  }
+>(({ label, error, prefix, className = "", ...props }, ref) => (
   <div className="w-full">
     {label && <label className="block text-sm font-semibold text-slate-700 mb-1.5 ml-1">{label}</label>}
     <div className="relative group">
@@ -118,7 +120,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, er
 ));
 Input.displayName = "Input";
 
-// --- Modal ---
+export const Badge: React.FC<{ children: React.ReactNode; color?: keyof typeof BADGE_COLORS }> = ({ children, color = "brand" }) => (
+  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${BADGE_COLORS[color]}`}>{children}</span>
+);
+Badge.displayName = "Badge";
+
 export const Modal: React.FC<{
   isOpen: boolean;
   onClose: () => void;
@@ -145,7 +151,6 @@ export const Modal: React.FC<{
 };
 Modal.displayName = "Modal";
 
-// --- Currency Input ---
 export const CurrencyInput: React.FC<{
   label?: string;
   value: number;
@@ -169,22 +174,6 @@ export const CurrencyInput: React.FC<{
 );
 CurrencyInput.displayName = "CurrencyInput";
 
-// --- Badge ---
-const BADGE_COLORS = {
-  brand: "bg-brand-50 text-brand-700 border-brand-100",
-  green: "bg-emerald-50 text-emerald-700 border-emerald-100",
-  red: "bg-red-50 text-red-700 border-red-100",
-  yellow: "bg-amber-50 text-amber-700 border-amber-100",
-  slate: "bg-slate-50 text-slate-700 border-slate-100",
-  blue: "bg-blue-50 text-blue-700 border-blue-100",
-};
-
-export const Badge: React.FC<{ children: React.ReactNode; color?: keyof typeof BADGE_COLORS }> = ({ children, color = "brand" }) => (
-  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${BADGE_COLORS[color]}`}>{children}</span>
-);
-Badge.displayName = "Badge";
-
-// --- Toast ---
 export const Toast: React.FC<{
   message: string;
   type?: "success" | "error" | "warning" | "info";
@@ -225,3 +214,28 @@ export const Toast: React.FC<{
   );
 };
 Toast.displayName = "Toast";
+
+export const OfflineIndicator: React.FC = () => {
+  const [isOnline, setIsOnline] = React.useState(navigator.onLine);
+
+  React.useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, []);
+
+  if (isOnline) return null;
+
+  return (
+    <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[100] bg-red-600 text-white px-6 py-2 rounded-full shadow-2xl flex items-center gap-3 animate-bounce">
+      <i className="fa-solid fa-wifi-slash"></i>
+      <span className="text-xs font-bold uppercase tracking-widest">Mode Offline Aktif</span>
+    </div>
+  );
+};
+OfflineIndicator.displayName = "OfflineIndicator";
