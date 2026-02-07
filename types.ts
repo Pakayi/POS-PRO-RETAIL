@@ -55,7 +55,6 @@ export interface Customer {
   totalSpent: number;
   debtBalance: number;
   joinedAt: number;
-  // Member Point Fields
   isMember: boolean;
   pointsBalance: number;
   memberId?: string;
@@ -76,7 +75,7 @@ export interface PointHistory {
   type: "earn" | "redeem";
   points: number;
   timestamp: number;
-  referenceId: string; // Transaction ID atau Reward ID
+  referenceId: string;
 }
 
 export interface DebtPayment {
@@ -103,14 +102,15 @@ export interface Transaction {
   timestamp: number;
   items: CartItem[];
   totalAmount: number;
-  paymentMethod: "cash" | "qris" | "debt";
+  paymentMethod: "cash" | "qris" | "debt" | "split";
   cashPaid: number;
+  debtAmount?: number;
   change: number;
   note?: string;
   customerId?: string;
   customerName?: string;
   discountAmount?: number;
-  pointsEarned?: number; // Poin yang didapat dari transaksi ini
+  pointsEarned?: number;
 }
 
 export type UserRole = "owner" | "staff";
@@ -139,9 +139,8 @@ export interface AppSettings {
     silver: number;
     gold: number;
   };
-  // Loyalty Settings
   enablePoints: boolean;
-  pointValue: number; // Misal: 1000 (Tiap 1000 rupiah dapat 1 poin)
+  pointValue: number;
   tierMultipliers: {
     bronze: number;
     silver: number;

@@ -25,7 +25,7 @@ export const Card: React.FC<{
   noPadding?: boolean;
   variant?: keyof typeof HEADER_VARIANTS;
 }> = ({ children, className = "", noPadding = false, variant = "white" }) => (
-  <div className={`bg-white rounded-2xl border border-slate-200/60 shadow-sm shadow-slate-200/40 overflow-hidden ${HEADER_VARIANTS[variant]} ${noPadding ? "" : "p-5"} ${className}`}>{children}</div>
+  <div className={`bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden ${HEADER_VARIANTS[variant]} ${noPadding ? "" : "p-5"} ${className}`}>{children}</div>
 );
 Card.displayName = "Card";
 
@@ -64,12 +64,12 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 export const Button: React.FC<ButtonProps> = ({ children, variant = "primary", size = "md", icon, loading, className = "", ...props }) => {
   const variants = {
-    primary: "bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-100 shadow-md shadow-brand-200",
+    primary: "bg-brand-600 text-white hover:bg-brand-700 focus:ring-brand-100 shadow-md",
     secondary: "bg-slate-100 text-slate-700 hover:bg-slate-200 focus:ring-slate-200",
-    success: "bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-100 shadow-md shadow-emerald-200",
+    success: "bg-emerald-600 text-white hover:bg-emerald-700 focus:ring-emerald-100 shadow-md",
     danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 focus:ring-red-50",
     ghost: "text-slate-600 hover:bg-slate-50 focus:ring-slate-100",
-    outline: "border border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300 focus:ring-slate-100",
+    outline: "border border-slate-200 text-slate-700 hover:bg-slate-50 focus:ring-slate-100",
   };
 
   const sizes = {
@@ -83,7 +83,7 @@ export const Button: React.FC<ButtonProps> = ({ children, variant = "primary", s
       className={`inline-flex items-center justify-center font-semibold transition-all duration-200 rounded-xl focus:outline-none focus:ring-4 disabled:opacity-50 active:scale-[0.97] ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
-      {loading ? <i className="fa-solid fa-circle-notch fa-spin"></i> : icon ? <i className={`${icon}`}></i> : null}
+      {loading ? <i className="fa-solid fa-circle-notch fa-spin"></i> : icon ? <i className={icon}></i> : null}
       {children}
     </button>
   );
@@ -179,42 +179,28 @@ export const Badge: React.FC<{ children: React.ReactNode; color?: "brand" | "gre
 Badge.displayName = "Badge";
 
 // --- Toast ---
+// FIXED: Added and exported Toast component
 export const Toast: React.FC<{
-  message: string;
-  type?: "success" | "error" | "warning" | "info";
   isOpen: boolean;
   onClose: () => void;
-}> = ({ message, type = "info", isOpen, onClose }) => {
+  message: string;
+  type?: "success" | "error" | "info";
+}> = ({ isOpen, onClose, message, type = "success" }) => {
   React.useEffect(() => {
     if (isOpen) {
-      const timer = setTimeout(onClose, 4000);
+      const timer = setTimeout(onClose, 3000);
       return () => clearTimeout(timer);
     }
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
-  const styles = {
-    success: "bg-slate-900 text-white",
-    error: "bg-red-600 text-white",
-    warning: "bg-amber-500 text-white",
-    info: "bg-brand-600 text-white",
-  };
-
-  const icons = {
-    success: "fa-check-circle text-emerald-400",
-    error: "fa-exclamation-circle",
-    warning: "fa-triangle-exclamation",
-    info: "fa-circle-info",
-  };
+  const bg = type === "success" ? "bg-emerald-600" : type === "error" ? "bg-red-600" : "bg-blue-600";
 
   return (
-    <div className={`fixed bottom-6 right-6 z-[60] flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl animate-in slide-in-from-bottom-5 duration-300 ${styles[type]}`}>
-      <i className={`fa-solid ${icons[type]} text-lg`}></i>
-      <p className="text-sm font-semibold">{message}</p>
-      <button onClick={onClose} className="ml-2 opacity-60 hover:opacity-100 transition-opacity">
-        <i className="fa-solid fa-xmark"></i>
-      </button>
+    <div className={`fixed bottom-6 right-6 z-[100] ${bg} text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-3 animate-in slide-in-from-right-10 duration-300`}>
+      <i className={`fa-solid ${type === "success" ? "fa-check-circle" : type === "error" ? "fa-exclamation-circle" : "fa-info-circle"}`}></i>
+      <span className="text-sm font-bold">{message}</span>
     </div>
   );
 };

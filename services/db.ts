@@ -1,6 +1,5 @@
 import { Product, Transaction, AppSettings, Customer, UserProfile, Supplier, Procurement, DebtPayment, PointReward, PointHistory } from "../types";
 import { db_fs, auth } from "./firebase";
-// FIX: Using CDN URLs for Firestore to match other services
 import { doc, setDoc, getDoc, collection, onSnapshot, deleteDoc, writeBatch, getDocs } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
 const STORAGE_KEYS = {
@@ -60,7 +59,6 @@ class DBService {
   }
 
   private setupCloudSync() {
-    // FIX: Typed user as any to accommodate CDN import type mismatches
     auth.onAuthStateChanged(async (user: any) => {
       if (user) {
         const profileDoc = await getDoc(doc(db_fs, "users", user.uid));
@@ -93,6 +91,35 @@ class DBService {
             window.dispatchEvent(new Event("customers-updated"));
           });
 
+          onSnapshot(collection(db_fs, `warungs/${warungId}/transactions`), (snapshot) => {
+            const txs: Transaction[] = [];
+            snapshot.forEach((doc) => txs.push(doc.data() as Transaction));
+            localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs));
+            window.dispatchEvent(new Event("transactions-updated"));
+          });
+
+          onSnapshot(collection(db_fs, `warungs/${warungId}/debt_payments`), (snapshot) => {
+            const payments: DebtPayment[] = [];
+            snapshot.forEach((doc) => payments.push(doc.data() as DebtPayment));
+            localStorage.setItem(STORAGE_KEYS.DEBT_PAYMENTS, JSON.stringify(payments));
+            window.dispatchEvent(new Event("debt-payments-updated"));
+          });
+
+          // ADDED: Additional snapshots for full cloud sync
+          onSnapshot(collection(db_fs, `warungs/${warungId}/suppliers`), (snapshot) => {
+            const suppliers: Supplier[] = [];
+            snapshot.forEach((doc) => suppliers.push(doc.data() as Supplier));
+            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
+            window.dispatchEvent(new Event("suppliers-updated"));
+          });
+
+          onSnapshot(collection(db_fs, `warungs/${warungId}/procurements`), (snapshot) => {
+            const procurements: Procurement[] = [];
+            snapshot.forEach((doc) => procurements.push(doc.data() as Procurement));
+            localStorage.setItem(STORAGE_KEYS.PROCUREMENT, JSON.stringify(procurements));
+            window.dispatchEvent(new Event("procurements-updated"));
+          });
+
           onSnapshot(collection(db_fs, `warungs/${warungId}/point_rewards`), (snapshot) => {
             const rewards: PointReward[] = [];
             snapshot.forEach((doc) => rewards.push(doc.data() as PointReward));
@@ -105,37 +132,6 @@ class DBService {
             snapshot.forEach((doc) => history.push(doc.data() as PointHistory));
             localStorage.setItem(STORAGE_KEYS.POINT_HISTORY, JSON.stringify(history));
             window.dispatchEvent(new Event("point-history-updated"));
-          });
-
-          onSnapshot(collection(db_fs, `warungs/${warungId}/transactions`), (snapshot) => {
-            const txs: Transaction[] = [];
-            snapshot.forEach((doc) => txs.push(doc.data() as Transaction));
-            localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(txs));
-            window.dispatchEvent(new Event("transactions-updated"));
-          });
-
-          // Cloud sync for suppliers
-          onSnapshot(collection(db_fs, `warungs/${warungId}/suppliers`), (snapshot) => {
-            const suppliers: Supplier[] = [];
-            snapshot.forEach((doc) => suppliers.push(doc.data() as Supplier));
-            localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
-            window.dispatchEvent(new Event("suppliers-updated"));
-          });
-
-          // Cloud sync for procurement
-          onSnapshot(collection(db_fs, `warungs/${warungId}/procurements`), (snapshot) => {
-            const procurements: Procurement[] = [];
-            snapshot.forEach((doc) => procurements.push(doc.data() as Procurement));
-            localStorage.setItem(STORAGE_KEYS.PROCUREMENT, JSON.stringify(procurements));
-            window.dispatchEvent(new Event("procurements-updated"));
-          });
-
-          // Cloud sync for debt payments
-          onSnapshot(collection(db_fs, `warungs/${warungId}/debt_payments`), (snapshot) => {
-            const payments: DebtPayment[] = [];
-            snapshot.forEach((doc) => payments.push(doc.data() as DebtPayment));
-            localStorage.setItem(STORAGE_KEYS.DEBT_PAYMENTS, JSON.stringify(payments));
-            window.dispatchEvent(new Event("debt-payments-updated"));
           });
         }
       }
@@ -158,9 +154,11 @@ class DBService {
     window.dispatchEvent(new Event("customers-updated"));
   }
 
+  // FIXED: Added deleteCustomer method
   async deleteCustomer(id: string): Promise<void> {
-    const customers = this.getCustomers().filter((c) => c.id !== id);
-    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(customers));
+    const customers = this.getCustomers();
+    const filtered = customers.filter((c) => c.id !== id);
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(filtered));
     if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/customers`, id));
     window.dispatchEvent(new Event("customers-updated"));
   }
@@ -175,7 +173,6 @@ class DBService {
     transactions.unshift(transaction);
     localStorage.setItem(STORAGE_KEYS.TRANSACTIONS, JSON.stringify(transactions));
 
-    // Kurangi Stok
     const products = this.getProducts();
     transaction.items.forEach((item) => {
       const productIndex = products.findIndex((p) => p.id === item.productId);
@@ -185,7 +182,6 @@ class DBService {
       }
     });
 
-    // Update Customer (Hutang, Belanja, & Poin Member)
     if (transaction.customerId) {
       const customers = this.getCustomers();
       const custIdx = customers.findIndex((c) => c.id === transaction.customerId);
@@ -195,15 +191,15 @@ class DBService {
 
         if (transaction.paymentMethod === "debt") {
           customer.debtBalance = (customer.debtBalance || 0) + transaction.totalAmount;
+        } else if (transaction.paymentMethod === "split" && transaction.debtAmount) {
+          customer.debtBalance = (customer.debtBalance || 0) + transaction.debtAmount;
         }
 
-        // Otomatis tambah poin jika member
         if (customer.isMember && transaction.pointsEarned) {
           customer.pointsBalance = (customer.pointsBalance || 0) + transaction.pointsEarned;
-
-          // Catat log poin
-          const log: PointHistory = {
-            id: `LOG-${Date.now()}`,
+          // Log point history
+          const historyItem: PointHistory = {
+            id: `PH-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
             customerId: customer.id,
             customerName: customer.name,
             type: "earn",
@@ -211,88 +207,21 @@ class DBService {
             timestamp: Date.now(),
             referenceId: transaction.id,
           };
-          await this.savePointHistory(log);
+          await this.addPointHistory(historyItem);
         }
-
         await this.saveCustomer(customer);
       }
     }
 
     if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/transactions`, transaction.id), this.sanitizeForFirestore(transaction));
-  }
-
-  getPointRewards(): PointReward[] {
-    const data = localStorage.getItem(STORAGE_KEYS.REWARDS);
-    return data ? JSON.parse(data) : [];
-  }
-
-  async savePointReward(reward: PointReward): Promise<void> {
-    const rewards = this.getPointRewards();
-    const index = rewards.findIndex((r) => r.id === reward.id);
-    if (index >= 0) rewards[index] = reward;
-    else rewards.push(reward);
-    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(rewards));
-    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_rewards`, reward.id), this.sanitizeForFirestore(reward));
-    window.dispatchEvent(new Event("rewards-updated"));
-  }
-
-  async deletePointReward(id: string): Promise<void> {
-    const rewards = this.getPointRewards().filter((r) => r.id !== id);
-    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(rewards));
-    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_rewards`, id));
-    window.dispatchEvent(new Event("rewards-updated"));
-  }
-
-  getPointHistory(): PointHistory[] {
-    const data = localStorage.getItem(STORAGE_KEYS.POINT_HISTORY);
-    return data ? JSON.parse(data) : [];
-  }
-
-  async savePointHistory(log: PointHistory): Promise<void> {
-    const history = this.getPointHistory();
-    history.unshift(log);
-    localStorage.setItem(STORAGE_KEYS.POINT_HISTORY, JSON.stringify(history));
-    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_history`, log.id), this.sanitizeForFirestore(log));
-    window.dispatchEvent(new Event("point-history-updated"));
-  }
-
-  async redeemReward(customerId: string, rewardId: string): Promise<void> {
-    const customers = this.getCustomers();
-    const custIdx = customers.findIndex((c) => c.id === customerId);
-    const rewards = this.getPointRewards();
-    const rewIdx = rewards.findIndex((r) => r.id === rewardId);
-
-    if (custIdx >= 0 && rewIdx >= 0) {
-      const customer = customers[custIdx];
-      const reward = rewards[rewIdx];
-
-      if (customer.pointsBalance >= reward.pointsNeeded && reward.stock > 0) {
-        customer.pointsBalance -= reward.pointsNeeded;
-        await this.saveCustomer(customer);
-
-        reward.stock -= 1;
-        await this.savePointReward(reward);
-
-        const log: PointHistory = {
-          id: `REDEEM-${Date.now()}`,
-          customerId: customer.id,
-          customerName: customer.name,
-          type: "redeem",
-          points: reward.pointsNeeded,
-          timestamp: Date.now(),
-          referenceId: reward.id,
-        };
-        await this.savePointHistory(log);
-      } else {
-        throw new Error("Poin tidak cukup atau hadiah habis.");
-      }
-    }
+    window.dispatchEvent(new Event("transactions-updated"));
   }
 
   getProducts(): Product[] {
     const data = localStorage.getItem(STORAGE_KEYS.PRODUCTS);
     return data ? JSON.parse(data) : [];
   }
+
   async saveProduct(product: Product): Promise<void> {
     const products = this.getProducts();
     const index = products.findIndex((p) => p.id === product.id);
@@ -304,9 +233,11 @@ class DBService {
     window.dispatchEvent(new Event("products-updated"));
   }
 
+  // FIXED: Added deleteProduct method
   async deleteProduct(id: string): Promise<void> {
-    const products = this.getProducts().filter((p) => p.id !== id);
-    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(products));
+    const products = this.getProducts();
+    const filtered = products.filter((p) => p.id !== id);
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(filtered));
     if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/products`, id));
     window.dispatchEvent(new Event("products-updated"));
   }
@@ -315,25 +246,30 @@ class DBService {
     const data = localStorage.getItem(STORAGE_KEYS.SETTINGS);
     return data ? JSON.parse(data) : DEFAULT_SETTINGS;
   }
+
   async saveSettings(settings: AppSettings): Promise<void> {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
     window.dispatchEvent(new Event("settings-updated"));
     if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/config`, "settings"), this.sanitizeForFirestore(settings));
   }
+
   getUserProfile(): UserProfile | null {
     return this.profile;
   }
+
   async saveUserProfile(profile: UserProfile): Promise<void> {
     this.profile = profile;
     localStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
     await setDoc(doc(db_fs, "users", profile.uid), this.sanitizeForFirestore(profile));
     window.dispatchEvent(new Event("profile-updated"));
   }
+
   getSuppliers(): Supplier[] {
     const data = localStorage.getItem(STORAGE_KEYS.SUPPLIERS);
     return data ? JSON.parse(data) : [];
   }
 
+  // FIXED: Added saveSupplier method
   async saveSupplier(supplier: Supplier): Promise<void> {
     const suppliers = this.getSuppliers();
     const index = suppliers.findIndex((s) => s.id === supplier.id);
@@ -344,9 +280,11 @@ class DBService {
     window.dispatchEvent(new Event("suppliers-updated"));
   }
 
+  // FIXED: Added deleteSupplier method
   async deleteSupplier(id: string): Promise<void> {
-    const suppliers = this.getSuppliers().filter((s) => s.id !== id);
-    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(suppliers));
+    const suppliers = this.getSuppliers();
+    const filtered = suppliers.filter((s) => s.id !== id);
+    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(filtered));
     if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/suppliers`, id));
     window.dispatchEvent(new Event("suppliers-updated"));
   }
@@ -360,17 +298,14 @@ class DBService {
     const procurements = this.getProcurements();
     procurements.unshift(procurement);
     localStorage.setItem(STORAGE_KEYS.PROCUREMENT, JSON.stringify(procurements));
-
-    // Update Stok
-    const products = this.getProducts();
     for (const item of procurement.items) {
+      const products = this.getProducts();
       const pIdx = products.findIndex((p) => p.id === item.productId);
       if (pIdx >= 0) {
         products[pIdx].stock += item.quantity;
         await this.saveProduct(products[pIdx]);
       }
     }
-
     if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/procurements`, procurement.id), this.sanitizeForFirestore(procurement));
     window.dispatchEvent(new Event("procurements-updated"));
   }
@@ -379,6 +314,7 @@ class DBService {
     const data = localStorage.getItem(STORAGE_KEYS.DEBT_PAYMENTS);
     return data ? JSON.parse(data) : [];
   }
+
   async createDebtPayment(payment: DebtPayment): Promise<void> {
     const payments = this.getDebtPayments();
     payments.unshift(payment);
@@ -393,111 +329,152 @@ class DBService {
     window.dispatchEvent(new Event("debt-payments-updated"));
   }
 
-  // FIX: Added wipeAllData method to clear local and cloud data
-  async wipeAllData(): Promise<void> {
-    const warungId = this.profile?.warungId;
-    if (!warungId) return;
+  getPointRewards(): PointReward[] {
+    const data = localStorage.getItem(STORAGE_KEYS.REWARDS);
+    return data ? JSON.parse(data) : [];
+  }
 
-    // Clear LocalStorage
-    Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
-    localStorage.removeItem(STORAGE_KEYS.INIT);
+  // FIXED: Added savePointReward method
+  async savePointReward(reward: PointReward): Promise<void> {
+    const rewards = this.getPointRewards();
+    const index = rewards.findIndex((r) => r.id === reward.id);
+    if (index >= 0) rewards[index] = reward;
+    else rewards.push(reward);
+    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(rewards));
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_rewards`, reward.id), this.sanitizeForFirestore(reward));
+    window.dispatchEvent(new Event("rewards-updated"));
+  }
 
-    // Clear Firestore (Collections)
-    const collections = ["products", "customers", "transactions", "suppliers", "procurements", "debt_payments", "point_rewards", "point_history"];
-    const batch = writeBatch(db_fs);
+  // FIXED: Added deletePointReward method
+  async deletePointReward(id: string): Promise<void> {
+    const rewards = this.getPointRewards();
+    const filtered = rewards.filter((r) => r.id !== id);
+    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(filtered));
+    if (this.profile?.warungId) await deleteDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_rewards`, id));
+    window.dispatchEvent(new Event("rewards-updated"));
+  }
 
-    for (const colName of collections) {
-      try {
-        const snap = await getDocs(collection(db_fs, `warungs/${warungId}/${colName}`));
-        snap.forEach((d) => batch.delete(d.ref));
-      } catch (e) {
-        console.error(`Failed to clear ${colName}`, e);
+  getPointHistory(): PointHistory[] {
+    const data = localStorage.getItem(STORAGE_KEYS.POINT_HISTORY);
+    return data ? JSON.parse(data) : [];
+  }
+
+  // FIXED: Added addPointHistory method
+  async addPointHistory(history: PointHistory): Promise<void> {
+    const histories = this.getPointHistory();
+    histories.unshift(history);
+    localStorage.setItem(STORAGE_KEYS.POINT_HISTORY, JSON.stringify(histories));
+    if (this.profile?.warungId) await setDoc(doc(db_fs, `warungs/${this.profile.warungId}/point_history`, history.id), this.sanitizeForFirestore(history));
+    window.dispatchEvent(new Event("point-history-updated"));
+  }
+
+  async redeemReward(customerId: string, rewardId: string): Promise<void> {
+    const customers = this.getCustomers();
+    const custIdx = customers.findIndex((c) => c.id === customerId);
+    const rewards = this.getPointRewards();
+    const rewIdx = rewards.findIndex((r) => r.id === rewardId);
+    if (custIdx >= 0 && rewIdx >= 0) {
+      const customer = customers[custIdx];
+      const reward = rewards[rewIdx];
+      if (customer.pointsBalance >= reward.pointsNeeded && reward.stock > 0) {
+        customer.pointsBalance -= reward.pointsNeeded;
+        await this.saveCustomer(customer);
+        reward.stock -= 1;
+        await this.savePointReward(reward);
+
+        const history: PointHistory = {
+          id: `PH-${Date.now()}`,
+          customerId: customer.id,
+          customerName: customer.name,
+          type: "redeem",
+          points: reward.pointsNeeded,
+          timestamp: Date.now(),
+          referenceId: reward.id,
+        };
+        await this.addPointHistory(history);
+      } else {
+        throw new Error("Poin tidak cukup atau stok hadiah habis.");
       }
     }
-
-    // Clear settings
-    try {
-      batch.delete(doc(db_fs, `warungs/${warungId}/config`, "settings"));
-    } catch (e) {}
-
-    await batch.commit();
   }
 
-  // FIX: Added injectDemoData method to prepopulate the app
-  async injectDemoData(): Promise<void> {
-    if (!this.profile?.warungId) return;
-
-    await this.wipeAllData();
-
-    const demoProducts: Product[] = [
-      {
-        id: "DEMO-P1",
-        name: "Beras Pandan Wangi 5kg",
-        sku: "899123456781",
-        category: "Sembako",
-        baseUnit: "Karung",
-        stock: 20,
-        minStockAlert: 5,
-        updatedAt: Date.now(),
-        units: [{ name: "Karung", conversion: 1, price: 85000, buyPrice: 78000 }],
-      },
-      {
-        id: "DEMO-P2",
-        name: "Minyak Goreng 1L",
-        sku: "899123456782",
-        category: "Sembako",
-        baseUnit: "Pouch",
-        stock: 50,
-        minStockAlert: 10,
-        updatedAt: Date.now(),
-        units: [{ name: "Pouch", conversion: 1, price: 18000, buyPrice: 16500 }],
-      },
-      {
-        id: "DEMO-P3",
-        name: "Indomie Goreng",
-        sku: "899123456783",
-        category: "Makanan",
-        baseUnit: "Pcs",
-        stock: 200,
-        minStockAlert: 40,
-        updatedAt: Date.now(),
-        units: [
-          { name: "Pcs", conversion: 1, price: 3000, buyPrice: 2700 },
-          { name: "Dus", conversion: 40, price: 110000, buyPrice: 102000 },
-        ],
-      },
-    ];
-
-    const demoCustomers: Customer[] = [
-      {
-        id: "DEMO-C1",
-        name: "Budi Santoso",
-        phone: "08123456789",
-        tier: "Gold",
-        totalSpent: 1200000,
-        debtBalance: 0,
-        joinedAt: Date.now(),
-        isMember: true,
-        pointsBalance: 1200,
-      },
-      {
-        id: "DEMO-C2",
-        name: "Siti Aminah",
-        phone: "08556677889",
-        tier: "Silver",
-        totalSpent: 450000,
-        debtBalance: 50000,
-        joinedAt: Date.now(),
-        isMember: true,
-        pointsBalance: 450,
-      },
-    ];
-
-    for (const p of demoProducts) await this.saveProduct(p);
-    for (const c of demoCustomers) await this.saveCustomer(c);
-
+  // FIXED: Added wipeAllData method
+  async wipeAllData(): Promise<void> {
+    const keysToKeep = [STORAGE_KEYS.PROFILE, STORAGE_KEYS.INIT];
+    Object.keys(localStorage).forEach((k) => {
+      if (k.startsWith("warung_") && !keysToKeep.includes(k)) {
+        localStorage.removeItem(k);
+      }
+    });
+    localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(DEFAULT_SETTINGS));
     localStorage.setItem(STORAGE_KEYS.INIT, "true");
   }
-}
 
+  // FIXED: Added injectDemoData method
+  async injectDemoData(): Promise<void> {
+    await this.wipeAllData();
+    const demoSuppliers: Supplier[] = [{ id: "S1", name: "PT Sembako Makmur", contact: "08123456789", address: "Jl. Pasar Baru No. 1", description: "Supplier Sembako Utama" }];
+    const demoProducts: Product[] = [
+      {
+        id: "P1",
+        name: "Indomie Goreng",
+        sku: "8998866200578",
+        category: "Makanan",
+        baseUnit: "Pcs",
+        stock: 100,
+        minStockAlert: 20,
+        units: [{ name: "Pcs", conversion: 1, price: 3500, buyPrice: 2800 }],
+        updatedAt: Date.now(),
+        supplierId: "S1",
+      },
+      {
+        id: "P2",
+        name: "Minyak Goreng 1L",
+        sku: "8999999123456",
+        category: "Kebutuhan Dapur",
+        baseUnit: "Pouch",
+        stock: 24,
+        minStockAlert: 5,
+        units: [{ name: "Pouch", conversion: 1, price: 18000, buyPrice: 15500 }],
+        updatedAt: Date.now(),
+        supplierId: "S1",
+      },
+    ];
+    const demoCustomers: Customer[] = [
+      { id: "C1", name: "Budi Santoso", phone: "087712345678", tier: "Gold", totalSpent: 500000, debtBalance: 0, joinedAt: Date.now(), isMember: true, pointsBalance: 450, memberId: "MB-001" },
+      { id: "C2", name: "Ani Wijaya", phone: "081299998888", tier: "Bronze", totalSpent: 25000, debtBalance: 15000, joinedAt: Date.now(), isMember: false, pointsBalance: 0 },
+    ];
+    const demoRewards: PointReward[] = [
+      { id: "R1", name: "Mug Cantik", pointsNeeded: 100, stock: 10, description: "Mug keramik limited edition" },
+      { id: "R2", name: "Voucher Belanja 10rb", pointsNeeded: 500, stock: 50, description: "Potongan langsung di kasir" },
+    ];
+
+    localStorage.setItem(STORAGE_KEYS.SUPPLIERS, JSON.stringify(demoSuppliers));
+    localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(demoProducts));
+    localStorage.setItem(STORAGE_KEYS.CUSTOMERS, JSON.stringify(demoCustomers));
+    localStorage.setItem(STORAGE_KEYS.REWARDS, JSON.stringify(demoRewards));
+
+    if (this.profile?.warungId) {
+      const warungId = this.profile.warungId;
+      for (const s of demoSuppliers) await setDoc(doc(db_fs, `warungs/${warungId}/suppliers`, s.id), s);
+      for (const p of demoProducts) await setDoc(doc(db_fs, `warungs/${warungId}/products`, p.id), p);
+      for (const c of demoCustomers) await setDoc(doc(db_fs, `warungs/${warungId}/customers`, c.id), c);
+      for (const r of demoRewards) await setDoc(doc(db_fs, `warungs/${warungId}/point_rewards`, r.id), r);
+    }
+  }
+
+  exportAllData(): string {
+    const data: any = {};
+    Object.keys(localStorage).forEach((k) => {
+      if (k.startsWith("warung_")) data[k] = localStorage.getItem(k);
+    });
+    return JSON.stringify(data);
+  }
+
+  async importAllData(json: string): Promise<void> {
+    const data = JSON.parse(json);
+    Object.keys(data).forEach((k) => localStorage.setItem(k, data[k]));
+    window.location.reload();
+  }
+}
 export const db = new DBService();
