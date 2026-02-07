@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { HashRouter, Routes, Route, NavLink, useLocation, Navigate } from "react-router-dom";
-// FIX: Using CDN URL for firebase/auth to ensure exports like onAuthStateChanged and signOut are available
 import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 import { auth } from "./services/firebase";
 import { db } from "./services/db";
-import { OfflineIndicator, Badge } from "./components/UI";
 import { UserProfile } from "./types";
 
 // Pages
@@ -14,6 +12,7 @@ import Products from "./pages/Products";
 import Customers from "./pages/Customers";
 import Settings from "./pages/Settings";
 import Login from "./pages/Login";
+import { Badge } from "./components/UI";
 
 const NAV_ITEMS = [
   { path: "/", label: "Dashboard", icon: "fa-solid fa-house", roles: ["owner", "staff"] },
@@ -102,8 +101,6 @@ const Layout: React.FC<{ user: any }> = ({ user }) => {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] overflow-hidden">
-      <OfflineIndicator />
-
       {/* Mobile Overlay */}
       {isMobile && isSidebarOpen && <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-40 transition-opacity" onClick={() => setSidebarOpen(false)} />}
 
