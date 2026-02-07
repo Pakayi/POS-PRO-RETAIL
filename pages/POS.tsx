@@ -12,7 +12,7 @@ const POS: React.FC = () => {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [showCheckout, setShowCheckout] = useState(false);
   const [amountPaid, setAmountPaid] = useState<string>("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris" | "debt">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "qris" | "debt" | "split">("cash");
 
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const [showCustomerModal, setShowCustomerModal] = useState(false);
@@ -26,7 +26,6 @@ const POS: React.FC = () => {
   const [printerStatus, setPrinterStatus] = useState<"disconnected" | "connected">(printerService.isConnected() ? "connected" : "disconnected");
 
   const [showScanner, setShowScanner] = useState(false);
-  const [scanSelection, setScanSelection] = useState<Product | null>(null);
   const scannerInstanceRef = useRef<Html5Qrcode | null>(null);
   const lastScanTimeRef = useRef<number>(0);
 
@@ -55,7 +54,6 @@ const POS: React.FC = () => {
     };
   }, []);
 
-  // Logika Scanner Barcode
   useEffect(() => {
     if (showScanner) {
       const timer = setTimeout(async () => {
@@ -90,11 +88,7 @@ const POS: React.FC = () => {
     const product = products.find((p) => p.sku === decodedText);
     if (product) {
       lastScanTimeRef.current = now;
-      if (product.units.length > 1) {
-        setScanSelection(product);
-      } else {
-        addToCart(product, product.units[0]);
-      }
+      addToCart(product, product.units[0]);
     }
   };
 
@@ -129,12 +123,10 @@ const POS: React.FC = () => {
         },
       ];
     });
-    setScanSelection(null);
   };
 
   const calculations = useMemo(() => {
     const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
-
     let discountRate = 0;
     if (selectedCustomer) {
       const discounts = settings.tierDiscounts || { bronze: 0, silver: 2, gold: 5 };
@@ -142,27 +134,45 @@ const POS: React.FC = () => {
     }
     const discountAmount = subtotal * discountRate;
     const total = subtotal - discountAmount;
-
-    // Hitung Estimasi Poin (Jika Member)
     let pointsEarned = 0;
     if (selectedCustomer?.isMember && settings.enablePoints) {
       const basePoints = Math.floor(total / settings.pointValue);
       const multiplier = settings.tierMultipliers[selectedCustomer.tier.toLowerCase() as keyof typeof settings.tierMultipliers] || 1;
       pointsEarned = Math.floor(basePoints * multiplier);
     }
-
     return { subtotal, discountAmount, total, pointsEarned };
   }, [cart, settings, selectedCustomer]);
 
   const handleCheckout = async () => {
-    if (paymentMethod === "debt" && !selectedCustomer) {
-      alert("Pilih pelanggan untuk hutang!");
+    if ((paymentMethod === "debt" || paymentMethod === "split") && !selectedCustomer) {
+      alert("Pilih pelanggan terlebih dahulu untuk mencatat hutang!");
+      setShowCustomerModal(true);
       return;
     }
-    const paid = paymentMethod === "cash" ? parseInt(amountPaid) || 0 : calculations.total;
-    if (paymentMethod === "cash" && paid < calculations.total) {
-      alert("Pembayaran kurang!");
-      return;
+
+    let paid = calculations.total;
+    let debt = 0;
+
+    if (paymentMethod === "cash") {
+      paid = parseInt(amountPaid) || 0;
+      if (paid < calculations.total) {
+        alert("Nominal uang tunai kurang dari total belanja!");
+        return;
+      }
+    } else if (paymentMethod === "split") {
+      paid = parseInt(amountPaid) || 0;
+      if (paid <= 0) {
+        alert("Untuk pembayaran campuran, masukkan jumlah tunai yang diterima (min. Rp 1)");
+        return;
+      }
+      if (paid >= calculations.total) {
+        alert("Nominal tunai melebihi total. Gunakan metode TUNAI biasa untuk mendapatkan kembalian.");
+        return;
+      }
+      debt = calculations.total - paid;
+    } else if (paymentMethod === "debt") {
+      paid = 0;
+      debt = calculations.total;
     }
 
     const transaction: Transaction = {
@@ -172,7 +182,8 @@ const POS: React.FC = () => {
       totalAmount: calculations.total,
       paymentMethod: paymentMethod,
       cashPaid: paid,
-      change: paid - calculations.total,
+      debtAmount: debt > 0 ? debt : undefined,
+      change: paid > calculations.total ? paid - calculations.total : 0,
       customerId: selectedCustomer?.id,
       customerName: selectedCustomer?.name,
       discountAmount: calculations.discountAmount,
@@ -226,7 +237,7 @@ const POS: React.FC = () => {
         </div>
 
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-          {categories.map((cat) => (
+          {categories.map((cat: string) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
@@ -266,30 +277,23 @@ const POS: React.FC = () => {
           <h2 className="font-bold text-gray-800">Keranjang</h2>
           <div className="flex gap-1.5">
             <button
+              onClick={handleConnectPrinter}
+              className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${printerStatus === "connected" ? "bg-emerald-50 text-emerald-600 border-emerald-200 ring-2 ring-emerald-100" : "bg-white text-gray-500 border-gray-200"}`}
+            >
+              <i className="fa-solid fa-print"></i>
+              {printerStatus === "connected" ? "READY" : "PRINTER"}
+            </button>
+            <button
               onClick={() => setShowCustomerModal(true)}
               className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[10px] font-black transition-all ${selectedCustomer ? "bg-blue-50 text-blue-600 border-blue-200 ring-2 ring-blue-100" : "bg-white text-gray-500 border-gray-200"}`}
             >
               <i className="fa-solid fa-user"></i>
               {selectedCustomer ? selectedCustomer.name.split(" ")[0].toUpperCase() : "PELANGGAN"}
-              {selectedCustomer?.isMember && <i className="fa-solid fa-star text-amber-400 ml-1"></i>}
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {selectedCustomer?.isMember && (
-            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-3 rounded-xl shadow-sm mb-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="text-[10px] opacity-80 uppercase font-bold tracking-widest">Saldo Poin Member</p>
-                  <p className="text-xl font-black">{selectedCustomer.pointsBalance.toLocaleString("id-ID")} PTS</p>
-                </div>
-                <Badge color="yellow">{selectedCustomer.tier.toUpperCase()}</Badge>
-              </div>
-              <div className="mt-2 text-[10px] font-medium py-1 px-2 bg-white/10 rounded-lg inline-block">Dapat +{calculations.pointsEarned} poin dari transaksi ini</div>
-            </div>
-          )}
-
           {cart.map((item, idx) => (
             <div key={idx} className="flex justify-between items-start text-sm">
               <div className="flex-1">
@@ -338,35 +342,67 @@ const POS: React.FC = () => {
         </div>
       </Card>
 
-      <Modal isOpen={showCheckout} onClose={() => setShowCheckout(false)} title="Bayar">
+      <Modal isOpen={showCheckout} onClose={() => setShowCheckout(false)} title="Metode Pembayaran">
         <div className="space-y-4">
-          <div className="flex bg-slate-100 p-1 rounded-xl">
-            {["cash", "qris", "debt"].map((m: string) => (
-              <button key={m} onClick={() => setPaymentMethod(m as any)} className={`flex-1 py-2 text-[10px] font-black rounded-lg transition-all ${paymentMethod === m ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}>
-                {m.toUpperCase()}
-              </button>
-            ))}
+          <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+            <button onClick={() => setPaymentMethod("cash")} className={`py-2 text-[10px] font-black rounded-lg transition-all ${paymentMethod === "cash" ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-500"}`}>
+              TUNAI
+            </button>
+            <button onClick={() => setPaymentMethod("qris")} className={`py-2 text-[10px] font-black rounded-lg transition-all ${paymentMethod === "qris" ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-500"}`}>
+              QRIS
+            </button>
+            <button onClick={() => setPaymentMethod("debt")} className={`py-2 text-[10px] font-black rounded-lg transition-all ${paymentMethod === "debt" ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-500"}`}>
+              FULL HUTANG
+            </button>
+            <button onClick={() => setPaymentMethod("split")} className={`py-2 text-[10px] font-black rounded-lg transition-all ${paymentMethod === "split" ? "bg-white text-blue-600 shadow-sm border border-blue-100" : "text-slate-500"}`}>
+              TUNAI + HUTANG
+            </button>
           </div>
+
           <div className="text-center py-4 bg-blue-50 rounded-xl border border-blue-100">
+            <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest">Total Belanja</p>
             <p className="text-3xl font-black text-blue-800">Rp {calculations.total.toLocaleString("id-ID")}</p>
-            {calculations.pointsEarned > 0 && <p className="text-xs text-blue-600 font-bold mt-1">Dapat +{calculations.pointsEarned} Poin Member</p>}
           </div>
-          {paymentMethod === "cash" && (
+
+          {(paymentMethod === "cash" || paymentMethod === "split") && (
             <div className="space-y-4">
-              <Input type="number" label="Uang Tunai" value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} autoFocus />
-              <Button onClick={() => setAmountPaid(calculations.total.toString())} variant="secondary" className="w-full text-xs font-bold">
-                UANG PAS
-              </Button>
+              <Input type="number" label={paymentMethod === "split" ? "Jumlah Tunai yang Diterima" : "Uang Tunai"} value={amountPaid} onChange={(e) => setAmountPaid(e.target.value)} autoFocus placeholder="0" prefix="Rp" />
+              {paymentMethod === "split" && (
+                <div className="p-3 bg-red-50 border border-red-100 rounded-xl animate-in fade-in slide-in-from-top-2">
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-xs font-bold text-red-700">Kekurangan (HUTANG):</span>
+                    <span className="text-sm font-black text-red-800">Rp {Math.max(0, calculations.total - (parseInt(amountPaid) || 0)).toLocaleString("id-ID")}</span>
+                  </div>
+                  <p className="text-[10px] text-red-600 italic">
+                    * Sisanya akan otomatis dicatat ke buku hutang <strong>{selectedCustomer?.name || "PELANGGAN BELUM DIPILIH"}</strong>
+                  </p>
+                </div>
+              )}
             </div>
           )}
-          <Button onClick={handleCheckout} className="w-full py-3" disabled={(paymentMethod === "cash" && Number(amountPaid) < calculations.total) || (paymentMethod === "debt" && !selectedCustomer)}>
-            Konfirmasi
+
+          {paymentMethod === "debt" && (
+            <div className="p-3 bg-red-50 border border-red-100 rounded-xl text-center">
+              <p className="text-xs font-bold text-red-700 italic">Seluruh total akan dicatat sebagai HUTANG atas nama {selectedCustomer?.name}.</p>
+            </div>
+          )}
+
+          <Button
+            onClick={handleCheckout}
+            className="w-full py-3"
+            disabled={
+              (paymentMethod === "cash" && Number(amountPaid) < calculations.total) ||
+              ((paymentMethod === "debt" || paymentMethod === "split") && !selectedCustomer) ||
+              (paymentMethod === "split" && (Number(amountPaid) <= 0 || Number(amountPaid) >= calculations.total))
+            }
+          >
+            PROSES TRANSAKSI
           </Button>
         </div>
       </Modal>
 
       <Modal isOpen={showCustomerModal} onClose={() => setShowCustomerModal(false)} title="Pilih Pelanggan">
-        <Input placeholder="Cari nama atau no HP member..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
+        <Input placeholder="Cari nama atau no HP..." value={customerSearch} onChange={(e) => setCustomerSearch(e.target.value)} />
         <div className="mt-4 max-h-60 overflow-y-auto divide-y">
           {allCustomers
             .filter((c) => c.name.toLowerCase().includes(customerSearch.toLowerCase()) || c.phone.includes(customerSearch))
@@ -380,15 +416,10 @@ const POS: React.FC = () => {
                 className="w-full flex justify-between items-center py-3 px-2 hover:bg-slate-50"
               >
                 <div className="text-left">
-                  <span className="font-bold text-sm text-slate-800 flex items-center gap-1">
-                    {c.name} {c.isMember && <i className="fa-solid fa-star text-amber-400 text-[10px]"></i>}
-                  </span>
+                  <span className="font-bold text-sm text-slate-800">{c.name}</span>
                   <p className="text-[10px] text-slate-400 font-mono">{c.phone}</p>
                 </div>
-                <div className="flex gap-1 items-center">
-                  {c.isMember && <Badge color="blue">{c.pointsBalance.toLocaleString("id-ID")} PTS</Badge>}
-                  {c.debtBalance > 0 && <Badge color="red">HUTANG</Badge>}
-                </div>
+                {c.debtBalance > 0 && <Badge color="red">HUTANG: Rp {c.debtBalance.toLocaleString("id-ID")}</Badge>}
               </button>
             ))}
         </div>
@@ -398,16 +429,35 @@ const POS: React.FC = () => {
         <div id="reader" className="w-full max-w-[300px] mx-auto bg-black rounded-xl aspect-square border-2 border-blue-500 overflow-hidden"></div>
       </Modal>
 
-      <Modal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="Berhasil">
+      <Modal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} title="Transaksi Berhasil">
         <div className="text-center space-y-4">
           <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-3xl">
             <i className="fa-solid fa-check"></i>
           </div>
-          <p className="text-2xl font-black">Rp {lastTransaction?.totalAmount.toLocaleString("id-ID")}</p>
-          {lastTransaction?.pointsEarned ? <div className="p-2 bg-blue-50 border border-blue-100 rounded-xl text-blue-700 text-xs font-bold">Member dapat +{lastTransaction.pointsEarned} Poin!</div> : null}
+          <p className="text-2xl font-black">Total: Rp {lastTransaction?.totalAmount.toLocaleString("id-ID")}</p>
+
+          <div className="p-4 bg-slate-50 border rounded-xl text-left text-xs space-y-2">
+            <div className="flex justify-between">
+              <span className="text-slate-500">Bayar Tunai:</span>
+              <span className="font-bold">Rp {lastTransaction?.cashPaid.toLocaleString("id-ID")}</span>
+            </div>
+            {lastTransaction?.debtAmount && (
+              <div className="flex justify-between text-red-600">
+                <span className="font-bold">Masuk Hutang:</span>
+                <span className="font-black">Rp {lastTransaction.debtAmount.toLocaleString("id-ID")}</span>
+              </div>
+            )}
+            {lastTransaction?.paymentMethod === "cash" && (
+              <div className="flex justify-between text-emerald-600">
+                <span className="font-bold">Kembalian:</span>
+                <span className="font-black">Rp {lastTransaction.change.toLocaleString("id-ID")}</span>
+              </div>
+            )}
+          </div>
+
           <div className="grid grid-cols-2 gap-2">
             <Button onClick={handlePrint} icon="fa-solid fa-print">
-              Struk
+              Cetak Struk
             </Button>
             <Button onClick={() => setShowSuccessModal(false)} variant="secondary">
               Selesai
@@ -419,7 +469,6 @@ const POS: React.FC = () => {
   );
 };
 
-// Helper untuk cetak browser
 const generateReceiptHTML = (tx: Transaction, settings: AppSettings) => {
   const itemsHtml = tx.items
     .map(
@@ -431,6 +480,26 @@ const generateReceiptHTML = (tx: Transaction, settings: AppSettings) => {
   `,
     )
     .join("");
+
+  let paymentDetails = "";
+  if (tx.paymentMethod === "split") {
+    paymentDetails = `
+      <tr><td>TOTAL</td><td style="text-align:right;">Rp ${tx.totalAmount.toLocaleString("id-ID")}</td></tr>
+      <tr><td>BAYAR TUNAI</td><td style="text-align:right;">Rp ${tx.cashPaid.toLocaleString("id-ID")}</td></tr>
+      <tr><td style="color:red;">SISA HUTANG</td><td style="text-align:right; color:red;">Rp ${tx.debtAmount?.toLocaleString("id-ID")}</td></tr>
+    `;
+  } else if (tx.paymentMethod === "debt") {
+    paymentDetails = `
+      <tr><td>TOTAL</td><td style="text-align:right;">Rp ${tx.totalAmount.toLocaleString("id-ID")}</td></tr>
+      <tr><td style="color:red;">FULL HUTANG</td><td style="text-align:right; color:red;">Rp ${tx.totalAmount.toLocaleString("id-ID")}</td></tr>
+    `;
+  } else {
+    paymentDetails = `
+      <tr><td>TOTAL</td><td style="text-align:right;">Rp ${tx.totalAmount.toLocaleString("id-ID")}</td></tr>
+      <tr><td>BAYAR</td><td style="text-align:right;">Rp ${tx.cashPaid.toLocaleString("id-ID")}</td></tr>
+      <tr><td>KEMBALI</td><td style="text-align:right;">Rp ${tx.change.toLocaleString("id-ID")}</td></tr>
+    `;
+  }
 
   return `
     <html>
@@ -449,21 +518,13 @@ const generateReceiptHTML = (tx: Transaction, settings: AppSettings) => {
         <div class="line"></div>
         <div>No: ${tx.id}</div>
         <div>Tgl: ${new Date(tx.timestamp).toLocaleString("id-ID")}</div>
+        <div>Plgn: ${tx.customerName || "Umum"}</div>
         <div class="line"></div>
         <table>${itemsHtml}</table>
         <div class="line"></div>
         <table class="bold">
-          <tr><td>TOTAL</td><td style="text-align:right;">Rp ${tx.totalAmount.toLocaleString("id-ID")}</td></tr>
-          ${
-            tx.paymentMethod === "cash"
-              ? `
-            <tr><td>BAYAR</td><td style="text-align:right;">Rp ${tx.cashPaid.toLocaleString("id-ID")}</td></tr>
-            <tr><td>KEMBALI</td><td style="text-align:right;">Rp ${tx.change.toLocaleString("id-ID")}</td></tr>
-          `
-              : `<tr><td>METODE</td><td style="text-align:right;">${tx.paymentMethod.toUpperCase()}</td></tr>`
-          }
+          ${paymentDetails}
         </table>
-        ${tx.pointsEarned ? `<div class="line"></div><div class="center">Point Member Baru: +${tx.pointsEarned}</div>` : ""}
         <div class="line"></div>
         <div class="center">${settings.footerMessage}</div>
         <br/><br/>
